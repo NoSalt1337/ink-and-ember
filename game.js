@@ -187,7 +187,6 @@ let cardOfferActive  = false;
 let offeredCards     = [];
 let pendingCardTower = null;
 let selectedCard     = null;
-let awaitingTower    = false;
 let cardFullTimer    = 0;
 
 // Card panel layout (computed in drawCardOffer, stored for hit-testing)
@@ -247,66 +246,70 @@ function offerCards() {
   }
   cardOfferActive = true;
   selectedCard    = null;
-  awaitingTower   = false;
   document.getElementById('rerollBtn').style.display = 'block';
 }
 
 function closeCardOffer() {
-  cardOfferActive = false;
-  selectedCard    = null;
-  awaitingTower   = false;
+  cardOfferActive  = false;
+  selectedCard     = null;
   pendingCardTower = null;
   document.getElementById('rerollBtn').style.display = 'none';
 }
 
 function drawCardOffer() {
-  // Dim overlay
-  ctx.fillStyle = 'rgba(14, 11, 8, 0.80)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (cardOfferActive) {
+    // State 1: choosing a card — full overlay + panels
+    ctx.fillStyle = 'rgba(14, 11, 8, 0.80)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const cardW  = 120;
-  const cardH  = 160;
-  const gap    = 20;
-  const totalW = cardW * 3 + gap * 2;
-  const startX = (canvas.width - totalW) / 2;
-  const startY = (canvas.height - cardH) / 2 - 20;
+    const cardW  = 120;
+    const cardH  = 160;
+    const gap    = 20;
+    const totalW = cardW * 3 + gap * 2;
+    const startX = (canvas.width - totalW) / 2;
+    const startY = (canvas.height - cardH) / 2 - 20;
 
-  // Title
-  ctx.fillStyle = COLORS.ash;
-  ctx.font      = 'bold 16px monospace';
-  ctx.textAlign = 'center';
-
-  if (awaitingTower) {
-    ctx.fillText('Tap a tower to apply this card', canvas.width / 2, startY - 16);
-  } else {
+    ctx.fillStyle = COLORS.ash;
+    ctx.font      = 'bold 16px monospace';
+    ctx.textAlign = 'center';
     ctx.fillText('Choose a Card', canvas.width / 2, startY - 16);
-  }
-  ctx.textAlign = 'left';
+    ctx.textAlign = 'left';
 
-  // Reset panel cache
-  CARD_PANELS.length = 0;
-
-  if (!awaitingTower) {
+    CARD_PANELS.length = 0;
     offeredCards.forEach((card, i) => {
       const cx = startX + i * (cardW + gap);
       CARD_PANELS.push({ x: cx, y: startY, w: cardW, h: cardH, card });
       drawCard(card, cx, startY, cardW, cardH, false);
     });
-  }
 
-  // "Tower is full!" message
-  if (cardFullTimer > 0) {
+  } else if (selectedCard !== null) {
+    // State 2: card chosen, awaiting tower tap — floating banner only
+    const bannerText = cardFullTimer > 0
+      ? `${selectedCard.name} — tower is full, tap another`
+      : `${selectedCard.name} — tap a tower to apply`;
+
+    const bannerW = canvas.width - 40;
+    const bannerH = 36;
+    const bannerX = 20;
+    const bannerY = 10;
+
+    ctx.fillStyle = 'rgba(14, 11, 8, 0.88)';
+    ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
+    ctx.strokeStyle = COLORS.amber;
+    ctx.lineWidth   = 1.5;
+    ctx.strokeRect(bannerX + 1, bannerY + 1, bannerW - 2, bannerH - 2);
+
     ctx.fillStyle = COLORS.amber;
-    ctx.font      = '14px monospace';
+    ctx.font      = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Tower is full!', canvas.width / 2, startY + cardH + 28);
+    ctx.fillText(bannerText, canvas.width / 2, bannerY + 23);
     ctx.textAlign = 'left';
   }
 }
 
 // ─── SPAWN WAVE ───
 function spawnWave() {
-  if (cardOfferActive) return;
+  if (cardOfferActive || selectedCard !== null) return;
   waveRewardGiven = false;
   waveNum++;
   const count   = 5 + waveNum * 3;
@@ -510,34 +513,34 @@ function updateParticles() {
 
 // ─── PLACEMENT HANDLER ───
 function handleTileClick(pixelX, pixelY) {
-  // Card offer: select a card or apply to tower
+  // State 1: card offer overlay — check panel clicks
   if (cardOfferActive) {
-    if (awaitingTower) {
-      // Player tapping a tower to apply card
-      const col = Math.floor(pixelX / TILE);
-      const row = Math.floor(pixelY / TILE);
-      const tower = TOWERS.find(t => t.col === col && t.row === row);
-      if (tower) {
-        if (!canReceiveCard(tower)) {
-          cardFullTimer = 120;
-          return;
-        }
-        applyCard(selectedCard, tower);
-        closeCardOffer();
-      }
-      return;
-    }
-
-    // Check if a card panel was clicked
     for (const panel of CARD_PANELS) {
       if (
         pixelX >= panel.x && pixelX <= panel.x + panel.w &&
         pixelY >= panel.y && pixelY <= panel.y + panel.h
       ) {
-        selectedCard  = panel.card;
-        awaitingTower = true;
+        selectedCard    = panel.card;
+        cardOfferActive = false;
+        document.getElementById('rerollBtn').style.display = 'none';
         return;
       }
+    }
+    return;
+  }
+
+  // State 2: card selected, awaiting tower tap
+  if (selectedCard !== null) {
+    const col   = Math.floor(pixelX / TILE);
+    const row   = Math.floor(pixelY / TILE);
+    const tower = TOWERS.find(t => t.col === col && t.row === row);
+    if (tower) {
+      if (!canReceiveCard(tower)) {
+        cardFullTimer = 120;
+        return;
+      }
+      applyCard(selectedCard, tower);
+      closeCardOffer();
     }
     return;
   }
@@ -785,7 +788,7 @@ function draw() {
   drawBullets();
   drawParticles();
   drawHUD();
-  if (cardOfferActive) drawCardOffer();
+  if (cardOfferActive || selectedCard !== null) drawCardOffer();
 }
 
 // ─── GAME LOOP ───
@@ -799,7 +802,7 @@ function gameLoop() {
   if (synergyTimer > 0) synergyTimer--;
   if (cardFullTimer > 0) cardFullTimer--;
 
-  if (!cardOfferActive) {
+  if (!cardOfferActive && selectedCard === null) {
     updateSpawnQueue();
     updateEnemies();
     updateTowers();
