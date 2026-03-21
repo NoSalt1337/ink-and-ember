@@ -113,6 +113,12 @@ let spawning          = false;
 let spawnQueue        = [];
 let waveRewardGiven   = false;
 
+// ─── BOSS STATE ───
+let bossAnnounceTimer  = 0;   // counts down 180 frames (3s) before spawning
+let bossAnnounceData   = null; // { name, resistance, waveNum }
+let bossDefeatedTimer  = 0;   // counts down 120 frames (2s) after boss death
+let pendingBossReward  = false;
+
 // ─── COMBAT DATA ───
 const BULLETS        = [];
 const PARTICLES      = [];
@@ -339,34 +345,86 @@ function drawCardOffer() {
 }
 
 // ─── SPAWN WAVE ───
+function makeBossTemplate() {
+  const resistances = ['slow', 'poison', 'chain'];
+  const resistance  = resistances[Math.floor(Math.random() * resistances.length)];
+  const names       = { slow: 'Stone Golem', poison: 'Plague Rat', chain: 'Phantom' };
+  return {
+    isBoss:     true,
+    hp:         400 + waveNum * 80,
+    speed:      0.8 + waveNum * 0.03,
+    resistance,
+    name:       names[resistance],
+    reward:     80,
+    size:       20,
+  };
+}
+
+function spawnBossWave() {
+  const boss = makeBossTemplate();
+  bossAnnounceData  = { name: boss.name, resistance: boss.resistance, waveNum };
+  bossAnnounceTimer = 180;
+
+  const escortHp = 40 + waveNum * 20;
+  spawnQueue = [
+    { ...boss, delay: 0 },
+    ...Array.from({ length: 5 }, (_, i) => ({ hp: escortHp, delay: (i + 1) * 60 })),
+  ];
+}
+
 function spawnWave() {
   if (cardOfferActive || selectedCard !== null) return;
   waveRewardGiven = false;
   waveNum++;
-  const count   = 5 + waveNum * 3;
-  const enemyHp = 40 + waveNum * 20;
   spawning   = true;
   spawnQueue = [];
-  for (let i = 0; i < count; i++) {
-    spawnQueue.push({ hp: enemyHp, delay: i * 45 });
+
+  if (waveNum % 5 === 0) {
+    spawnBossWave();
+  } else {
+    const count   = 5 + waveNum * 3;
+    const enemyHp = 40 + waveNum * 20;
+    for (let i = 0; i < count; i++) {
+      spawnQueue.push({ hp: enemyHp, delay: i * 45 });
+    }
   }
 }
 
 function updateSpawnQueue() {
+  // Hold spawn queue while boss announcement is showing
+  if (bossAnnounceTimer > 0) { bossAnnounceTimer--; return; }
+
   if (spawnQueue.length === 0) return;
   spawnQueue[0].delay--;
   if (spawnQueue[0].delay <= 0) {
     const template = spawnQueue.shift();
     const start    = PATH[0];
-    ENEMIES.push({
-      x:       start.col * TILE + TILE / 2,
-      y:       start.row * TILE + TILE / 2,
-      pathIdx: 0,
-      hp:      template.hp,
-      maxHp:   template.hp,
-      speed:   1.5 + waveNum * 0.05,
-      done:    false,
-    });
+    if (template.isBoss) {
+      ENEMIES.push({
+        x:          start.col * TILE + TILE / 2,
+        y:          start.row * TILE + TILE / 2,
+        pathIdx:    0,
+        hp:         template.hp,
+        maxHp:      template.hp,
+        speed:      template.speed,
+        isBoss:     true,
+        size:       template.size,
+        name:       template.name,
+        resistance: template.resistance,
+        reward:     template.reward,
+        done:       false,
+      });
+    } else {
+      ENEMIES.push({
+        x:       start.col * TILE + TILE / 2,
+        y:       start.row * TILE + TILE / 2,
+        pathIdx: 0,
+        hp:      template.hp,
+        maxHp:   template.hp,
+        speed:   1.5 + waveNum * 0.05,
+        done:    false,
+      });
+    }
     if (spawnQueue.length === 0) spawning = false;
   }
 }
@@ -375,9 +433,17 @@ function updateSpawnQueue() {
 function killEnemy(enemy) {
   enemy.hp   = 0;
   enemy.done = true;
-  gold  += 15;
-  score += 10;
-  spawnParticles(enemy.x, enemy.y);
+  if (enemy.isBoss) {
+    gold  += enemy.reward;
+    score += 100;
+    spawnParticles(enemy.x, enemy.y, 20);
+    bossDefeatedTimer = 120;
+    pendingBossReward = true;
+  } else {
+    gold  += 15;
+    score += 10;
+    spawnParticles(enemy.x, enemy.y, 8);
+  }
 }
 
 function updateEnemies() {
@@ -502,13 +568,13 @@ function updateBullets() {
 }
 
 function applyStatusEffects(bullet, enemy) {
-  if (bullet.poison) {
+  if (bullet.poison && enemy.resistance !== 'poison') {
     enemy.poisoned       = true;
     enemy.poisonDamage   = 3;
     enemy.poisonDuration = 180;
   }
-  if (bullet.slow || bullet.frostSlow) {
-    const base  = bullet.frostSlow ? 180 : 120; // frost lasts 50% longer
+  if ((bullet.slow || bullet.frostSlow) && enemy.resistance !== 'slow') {
+    const base  = bullet.frostSlow ? 180 : 120;
     const bonus = (enemy.poisoned && enemy.slowed) ? 1.5 : 1;
     enemy.slowed    = true;
     enemy.slowTimer = Math.round(base * bonus);
@@ -543,8 +609,8 @@ function hitEnemy(bullet, enemy) {
     FROST_BURSTS.push({ x: enemy.x, y: enemy.y, life: 12 });
   }
 
-  // Chain / Storm Volley bounce
-  if (bullet.bounces > 0) {
+  // Chain / Storm Volley bounce (blocked by chain resistance)
+  if (bullet.bounces > 0 && enemy.resistance !== 'chain') {
     const others = ENEMIES.filter(e =>
       !e.done && !bullet.hitSet.has(e) &&
       Math.hypot(e.x - enemy.x, e.y - enemy.y) <= 150
@@ -574,8 +640,8 @@ function hitEnemy(bullet, enemy) {
 }
 
 // ─── PARTICLES ───
-function spawnParticles(x, y) {
-  for (let i = 0; i < 8; i++) {
+function spawnParticles(x, y, count = 8) {
+  for (let i = 0; i < count; i++) {
     PARTICLES.push({
       x,
       y,
@@ -881,24 +947,47 @@ function drawTowers() {
 }
 
 // ─── DRAW ENEMIES ───
+const RESISTANCE_DOT_COLOR = { slow: '#2D4F9E', poison: '#2D7A2D', chain: '#C87941' };
+
 function drawEnemies() {
   for (const enemy of ENEMIES) {
-    // Base body
-    ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
-    ctx.fillStyle = '#8B1A1A';
-    ctx.fill();
+    const r = enemy.isBoss ? 20 : 10;
 
-    ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#B03030';
-    ctx.fill();
+    if (enemy.isBoss) {
+      // Boss body
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#8B1A1A';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, r - 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#C03030';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth   = 3;
+      ctx.stroke();
+    } else {
+      // Normal body
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#8B1A1A';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#B03030';
+      ctx.fill();
+    }
 
     // Status tints
     if (enemy.poisoned) {
       ctx.globalAlpha = 0.4;
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
+      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
       ctx.fillStyle = '#2D7A2D';
       ctx.fill();
       ctx.globalAlpha = 1;
@@ -906,25 +995,40 @@ function drawEnemies() {
     if (enemy.slowed) {
       ctx.globalAlpha = 0.4;
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
+      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
       ctx.fillStyle = '#2D4F9E';
       ctx.fill();
       ctx.globalAlpha = 1;
     }
 
     // Health bar
-    const barW = 20;
-    const barH = 3;
+    const barW = enemy.isBoss ? 44 : 20;
+    const barH = enemy.isBoss ? 5  : 3;
     const bx   = enemy.x - barW / 2;
-    const by   = enemy.y - 16;
+    const by   = enemy.y - r - 10;
     ctx.fillStyle = '#333';
     ctx.fillRect(bx, by, barW, barH);
     ctx.fillStyle = COLORS.crimson;
     ctx.fillRect(bx, by, barW * (enemy.hp / enemy.maxHp), barH);
 
+    // Boss name + resistance shield dot
+    if (enemy.isBoss) {
+      ctx.fillStyle = COLORS.ash;
+      ctx.font      = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(enemy.name, enemy.x, by - 4);
+      ctx.textAlign = 'left';
+
+      // Resistance dot to the right of bar
+      ctx.beginPath();
+      ctx.arc(bx + barW + 6, by + barH / 2, 4, 0, Math.PI * 2);
+      ctx.fillStyle = RESISTANCE_DOT_COLOR[enemy.resistance] || COLORS.ash;
+      ctx.fill();
+    }
+
     // Status icon dots above health bar
     let dotX = enemy.x - 4;
-    const dotY = by - 6;
+    const dotY = by - (enemy.isBoss ? 14 : 6);
     if (enemy.poisoned) {
       ctx.beginPath();
       ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
@@ -1039,8 +1143,9 @@ function drawParticles() {
 
 // ─── DRAW HUD ───
 function drawHUD() {
+  const isBossWave = waveNum > 0 && waveNum % 5 === 0;
   const lines = [
-    `Wave:  ${waveNum}`,
+    `Wave:  ${waveNum}${isBossWave ? ' !' : ''}`,
     `Lives: ${lives}`,
     `Gold:  ${gold}`,
     `Score: ${score}`,
@@ -1053,9 +1158,9 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(14, 11, 8, 0.75)';
   ctx.fillRect(6, 6, panelW, panelH);
 
-  ctx.fillStyle = COLORS.ash;
-  ctx.font      = '13px monospace';
+  ctx.font = '13px monospace';
   lines.forEach((line, i) => {
+    ctx.fillStyle = (i === 0 && isBossWave) ? COLORS.amber : COLORS.ash;
     ctx.fillText(line, 6 + pad, 6 + pad + lineH * i + 12);
   });
 
@@ -1096,6 +1201,61 @@ function drawHUD() {
   }
 }
 
+// ─── BOSS ANNOUNCEMENT ───
+function drawBossAnnounce() {
+  if (bossAnnounceTimer <= 0 || !bossAnnounceData) return;
+
+  ctx.fillStyle = 'rgba(14, 11, 8, 0.90)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = '14px monospace';
+  ctx.fillText(`Wave ${bossAnnounceData.waveNum}`, cx, cy - 54);
+
+  ctx.fillStyle = COLORS.gold;
+  ctx.font      = 'bold 32px monospace';
+  ctx.fillText(bossAnnounceData.name, cx, cy - 10);
+
+  const immuneLabel = { slow: 'Immune to Slow', poison: 'Immune to Poison', chain: 'Immune to Chain' };
+  ctx.fillStyle = COLORS.amber;
+  ctx.font      = '14px monospace';
+  ctx.fillText(immuneLabel[bossAnnounceData.resistance], cx, cy + 24);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── BOSS DEFEATED MESSAGE ───
+function drawBossDefeated() {
+  if (bossDefeatedTimer <= 0) return;
+
+  const alpha = Math.min(1, bossDefeatedTimer / 30);
+  ctx.globalAlpha = alpha;
+
+  const msgW = 300;
+  const msgH = 50;
+  const msgX = (canvas.width - msgW) / 2;
+  const msgY = canvas.height / 2 - msgH / 2;
+
+  ctx.fillStyle = 'rgba(14, 11, 8, 0.88)';
+  ctx.fillRect(msgX, msgY, msgW, msgH);
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(msgX + 1, msgY + 1, msgW - 2, msgH - 2);
+
+  ctx.fillStyle = COLORS.gold;
+  ctx.font      = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Boss Defeated!', canvas.width / 2, msgY + 32);
+  ctx.textAlign = 'left';
+
+  ctx.globalAlpha = 1;
+}
+
 // ─── GAME OVER ───
 function drawGameOver() {
   ctx.fillStyle = 'rgba(14, 11, 8, 0.85)';
@@ -1120,6 +1280,8 @@ function draw() {
   drawBullets();
   drawParticles();
   drawHUD();
+  drawBossDefeated();
+  if (bossAnnounceTimer > 0) drawBossAnnounce();
   if (cardOfferActive || selectedCard !== null) drawCardOffer();
 }
 
@@ -1134,6 +1296,16 @@ function gameLoop() {
   if (synergyTimer > 0)        synergyTimer--;
   if (cardFullTimer > 0)       cardFullTimer--;
   if (notEnoughGoldTimer > 0)  notEnoughGoldTimer--;
+
+  // Boss defeated countdown — trigger bonus card offer when it expires
+  if (bossDefeatedTimer > 0) {
+    bossDefeatedTimer--;
+    if (bossDefeatedTimer === 0 && pendingBossReward) {
+      pendingBossReward = false;
+      waveRewardGiven   = true; // prevent normal wave-end offer from also firing
+      offerCards();
+    }
+  }
 
   if (!cardOfferActive && selectedCard === null) {
     updateSpawnQueue();
