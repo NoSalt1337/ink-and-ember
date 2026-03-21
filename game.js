@@ -175,6 +175,71 @@ const CARD_POOL = [
       }
     },
   },
+  // ── New common cards ──
+  {
+    id: 'dmg_boost_2', name: 'Whetstone', rarity: 'common',
+    description: 'Damage +20%',
+    effect: t => { t.damage *= t.mageDmg ? 1.2 * 1.2 : 1.2; },
+  },
+  {
+    id: 'range_boost_2', name: 'Hawk Eye', rarity: 'common',
+    description: 'Range +25%',
+    effect: t => { t.range *= 1.25; },
+  },
+  {
+    id: 'speed_boost_2', name: 'Steady Hands', rarity: 'common',
+    description: 'Fire Rate +25%',
+    effect: t => { t.fireRate *= 0.75; },
+  },
+  {
+    id: 'armor_pierce', name: 'Piercing Tip', rarity: 'common',
+    description: 'Ignores 30% enemy damage resistance',
+    effect: t => { t.armorPierce = 0.3; },
+  },
+  // ── New rare cards ──
+  {
+    id: 'multishot', name: 'Multishot', rarity: 'rare',
+    description: 'Fires 2 bullets at once',
+    effect: t => { t.multishot = true; },
+  },
+  {
+    id: 'vampiric', name: 'Vampiric Edge', rarity: 'rare',
+    description: 'Kills restore 1 extra gold',
+    effect: t => { t.vampiric = true; },
+  },
+  {
+    id: 'overcharge', name: 'Overcharge', rarity: 'rare',
+    description: 'Fire rate x2, range halved',
+    effect: t => { t.fireRate *= 0.5; t.range *= 0.5; },
+  },
+  {
+    id: 'bounce', name: 'Ricochet', rarity: 'rare',
+    description: 'Bullets pierce to next enemy behind target',
+    effect: t => { t.ricochet = true; },
+  },
+  // ── New legendary cards ──
+  {
+    id: 'berserker', name: 'Berserker', rarity: 'legendary',
+    description: 'Every 5th shot deals 3x damage',
+    effect: t => { t.berserker = true; t.berserkerCount = 0; },
+  },
+  {
+    id: 'evolve_ballista', name: 'Evolve: Ballista', rarity: 'legendary',
+    description: 'Archer → Ballista: 2x range & damage',
+    effect: t => {
+      if (t.type !== 'archer') return;
+      t.type  = 'ballista';
+      t.color = '#8B6914';
+      t.range  *= 2;
+      t.damage *= 2;
+      // Allow up to 4 slots
+    },
+  },
+  {
+    id: 'fortress', name: 'Fortress', rarity: 'legendary',
+    description: 'Lose 1 fewer life when enemies reach the end',
+    effect: t => { t.fortress = true; },
+  },
 ];
 
 const RARITY_BORDER = {
@@ -184,7 +249,8 @@ const RARITY_BORDER = {
 };
 
 function canReceiveCard(tower) {
-  return tower.cardSlots.length < 3;
+  const max = tower.warMachine ? 2 : (tower.type === 'ballista' ? 4 : 3);
+  return tower.cardSlots.length < max;
 }
 
 function applyCard(card, tower) {
@@ -205,9 +271,31 @@ function checkSynergies(tower) {
     tower.venomBog = true;
     showSynergy('Venom Bog unlocked!');
   }
-  if (has('slow') && has('chain') && !tower.stormVolley) {
-    tower.stormVolley = true;
-    showSynergy('Storm Volley unlocked!');
+  if ((has('slow') && has('chain')) || (has('multishot') && has('chain'))) {
+    if (!tower.stormVolley) {
+      tower.stormVolley = true;
+      showSynergy('Storm Volley unlocked!');
+    }
+  }
+  if (has('overcharge') && has('warlord') && !tower.warMachine) {
+    tower.warMachine = true;
+    // Permanently cap at 2 slots by trimming if needed
+    if (tower.cardSlots.length > 2) tower.cardSlots.length = 2;
+    showSynergy('War Machine unlocked!');
+  }
+  if (has('vampiric') && has('poison') && !tower.bloodPoison) {
+    tower.bloodPoison = true;
+    showSynergy('Blood Poison unlocked!');
+  }
+  if (has('berserker') && has('multishot') && !tower.fusillade) {
+    tower.fusillade = true;
+    showSynergy('Fusillade unlocked!');
+  }
+  if ((has('armor_pierce') && has('dmg_boost') || has('armor_pierce') && has('dmg_boost_2')) && !tower.sharpShooter) {
+    tower.sharpShooter = true;
+    tower.armorPierce  = 1.0; // full pierce
+    tower.damage      *= 1.1;
+    showSynergy('Sharpshooter unlocked!');
   }
 }
 
@@ -272,15 +360,31 @@ function drawCard(card, x, y, w, h, highlighted) {
   ctx.textAlign = 'left';
 }
 
+function drawOneCard(usedIds) {
+  const roll = Math.random();
+  let rarity;
+  if (roll < 0.6)      rarity = 'common';
+  else if (roll < 0.9) rarity = 'rare';
+  else                 rarity = 'legendary';
+
+  // No legendaries before wave 3
+  if (rarity === 'legendary' && waveNum < 3) rarity = 'rare';
+
+  let pool = CARD_POOL.filter(c => c.rarity === rarity && !usedIds.has(c.id));
+  // Fallback: if pool exhausted (unlikely) use any unused card
+  if (pool.length === 0) pool = CARD_POOL.filter(c => !usedIds.has(c.id));
+  if (pool.length === 0) pool = CARD_POOL; // absolute fallback
+
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function offerCards() {
   offeredCards = [];
+  const usedIds = new Set();
   for (let i = 0; i < 3; i++) {
-    const roll = Math.random();
-    let pool;
-    if (roll < 0.6)       pool = CARD_POOL.filter(c => c.rarity === 'common');
-    else if (roll < 0.9)  pool = CARD_POOL.filter(c => c.rarity === 'rare');
-    else                  pool = CARD_POOL.filter(c => c.rarity === 'legendary');
-    offeredCards.push(pool[Math.floor(Math.random() * pool.length)]);
+    const card = drawOneCard(usedIds);
+    offeredCards.push(card);
+    usedIds.add(card.id);
   }
   cardOfferActive = true;
   selectedCard    = null;
@@ -431,7 +535,7 @@ function updateSpawnQueue() {
 }
 
 // ─── ENEMY MOVEMENT ───
-function killEnemy(enemy) {
+function killEnemy(enemy, sourceBullet) {
   enemy.hp   = 0;
   enemy.done = true;
   if (enemy.isBoss) {
@@ -445,6 +549,8 @@ function killEnemy(enemy) {
     score += 10;
     spawnParticles(enemy.x, enemy.y, 8);
   }
+  // Vampiric bonus
+  if (sourceBullet && sourceBullet.vampiric) gold += 1;
 }
 
 function updateEnemies() {
@@ -456,7 +562,9 @@ function updateEnemies() {
       enemy.poisonDuration--;
       if (enemy.poisonDuration % 20 === 0) {
         enemy.hp -= enemy.poisonDamage;
-        if (enemy.hp <= 0) { killEnemy(enemy); continue; }
+        // Blood Poison: find any tower with bloodPoison and award 1 gold
+        if (TOWERS.some(t => t.bloodPoison)) gold += 1;
+        if (enemy.hp <= 0) { killEnemy(enemy, null); continue; }
       }
       if (enemy.poisonDuration <= 0) enemy.poisoned = false;
     }
@@ -469,7 +577,8 @@ function updateEnemies() {
 
     const next = PATH[enemy.pathIdx + 1];
     if (!next) {
-      lives = Math.max(0, lives - 1);
+      const fortressCount = TOWERS.filter(t => t.fortress).length;
+      lives = Math.max(0, lives - Math.max(0, 1 - fortressCount));
       enemy.done = true;
       continue;
     }
@@ -515,12 +624,21 @@ function updateTowers() {
     tower.angle = Math.atan2(target.y - tower.cy, target.x - tower.cx);
 
     if (tower.timer <= 0) {
-      BULLETS.push({
+      // Berserker / Fusillade shot count
+      if (tower.berserker) {
+        tower.berserkerCount = (tower.berserkerCount || 0) + 1;
+      }
+      const isBerserkerShot = tower.berserker && tower.berserkerCount >= 5;
+      if (isBerserkerShot) tower.berserkerCount = 0;
+
+      const dmg = isBerserkerShot ? tower.damage * 3 : tower.damage;
+
+      const makeBullet = (tx, dmgOverride) => ({
         x:           tower.cx,
         y:           tower.cy,
-        tx:          target,
+        tx,
         speed:       7,
-        dmg:         tower.damage,
+        dmg:         dmgOverride !== undefined ? dmgOverride : dmg,
         color:       tower.color,
         poison:      tower.poison      || false,
         slow:        tower.slow        || false,
@@ -529,9 +647,26 @@ function updateTowers() {
         splash:      tower.splash      || false,
         frostSlow:   tower.frostSlow   || false,
         isMage:      tower.mageDmg     || false,
+        ricochet:    tower.ricochet    || false,
+        vampiric:    tower.vampiric    || false,
+        sourceTower: tower,
         hitSet:      new Set(),
         done:        false,
       });
+
+      BULLETS.push(makeBullet(target));
+
+      // Multishot: fire at second nearest, or same target
+      if (tower.multishot || (tower.fusillade && isBerserkerShot)) {
+        const targets = tower.fusillade && isBerserkerShot
+          ? inRange.slice().sort((a, b) => b.pathIdx - a.pathIdx).slice(0, 4)
+          : [inRange.filter(e => e !== target)[0] || target];
+        for (const t2 of targets) {
+          if (t2 === target) continue; // primary already fired
+          BULLETS.push(makeBullet(t2));
+        }
+      }
+
       tower.timer = tower.fireRate;
     }
   }
@@ -586,10 +721,38 @@ function hitEnemy(bullet, enemy) {
   if (enemy.done) return;
 
   bullet.hitSet.add(enemy);
-  enemy.hp -= bullet.dmg;
+  const dmg = bullet.armorPierce ? bullet.dmg / (1 - bullet.armorPierce) : bullet.dmg;
+  enemy.hp -= dmg;
   applyStatusEffects(bullet, enemy);
 
-  if (enemy.hp <= 0) killEnemy(enemy);
+  if (enemy.hp <= 0) killEnemy(enemy, bullet);
+
+  // Ricochet: continue in same direction and hit first enemy within 20px
+  if (bullet.ricochet && !bullet.ricocheted) {
+    const dx  = bullet.tx.x - bullet.x;
+    const dy  = bullet.tx.y - bullet.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx  = dx / len;
+    const ny  = dy / len;
+    const cx  = enemy.x;
+    const cy  = enemy.y;
+    const nextHit = ENEMIES.find(e =>
+      e !== enemy && !e.done && !bullet.hitSet.has(e) &&
+      Math.hypot((e.x - cx) * ny - (e.y - cy) * nx, 0) +
+      Math.hypot(e.x - cx, e.y - cy) < 30
+    );
+    if (nextHit) {
+      BULLETS.push({
+        ...bullet,
+        x:          cx,
+        y:          cy,
+        tx:         nextHit,
+        ricocheted: true,
+        hitSet:     bullet.hitSet,
+        done:       false,
+      });
+    }
+  }
 
   // Cannon splash
   if (bullet.splash) {
@@ -903,6 +1066,16 @@ function drawTowerShape(tower) {
     ctx.rotate(tower.angle);
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(2, -2, TILE / 2 - 4, 4);
+    ctx.restore();
+
+  } else if (tower.type === 'ballista') {
+    // Wider rectangular base in dark gold, longer thicker barrel
+    ctx.fillRect(x + 3, y + 5, TILE - 6, TILE - 10);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tower.angle);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(2, -4, TILE * 0.65, 8);
     ctx.restore();
 
   } else if (tower.type === 'mage') {
