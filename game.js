@@ -112,6 +112,7 @@ let score      = 0;
 let spawning          = false;
 let spawnQueue        = [];
 let waveRewardGiven   = false;
+let gameOver          = false;
 
 // ─── BOSS STATE ───
 let bossAnnounceTimer  = 0;   // counts down 180 frames (3s) before spawning
@@ -771,16 +772,30 @@ function handleTileClick(pixelX, pixelY) {
   selectedTower = TOWERS[TOWERS.length - 1];
 }
 
+function handleCanvasInput(pixelX, pixelY) {
+  if (gameOver) {
+    if (
+      GAME_OVER_BTN.x !== undefined &&
+      pixelX >= GAME_OVER_BTN.x && pixelX <= GAME_OVER_BTN.x + GAME_OVER_BTN.w &&
+      pixelY >= GAME_OVER_BTN.y && pixelY <= GAME_OVER_BTN.y + GAME_OVER_BTN.h
+    ) {
+      restartGame();
+    }
+    return;
+  }
+  handleTileClick(pixelX, pixelY);
+}
+
 canvas.addEventListener('click', e => {
   const rect = canvas.getBoundingClientRect();
-  handleTileClick(e.clientX - rect.left, e.clientY - rect.top);
+  handleCanvasInput(e.clientX - rect.left, e.clientY - rect.top);
 });
 
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
   const rect  = canvas.getBoundingClientRect();
   const touch = e.changedTouches[0];
-  handleTileClick(touch.clientX - rect.left, touch.clientY - rect.top);
+  handleCanvasInput(touch.clientX - rect.left, touch.clientY - rect.top);
 });
 
 document.getElementById('sendWaveBtn').addEventListener('click', spawnWave);
@@ -1257,18 +1272,78 @@ function drawBossDefeated() {
 }
 
 // ─── GAME OVER ───
+const GAME_OVER_BTN = { w: 160, h: 36 }; // centered, y computed at draw time
+
+function restartGame() {
+  lives           = 20;
+  gold            = 150;
+  score           = 0;
+  waveNum         = 0;
+  spawning        = false;
+  spawnQueue      = [];
+  waveRewardGiven = false;
+  gameOver        = false;
+  selectedTower   = null;
+  selectedCard    = null;
+  cardOfferActive = false;
+  bossAnnounceTimer = 0;
+  bossAnnounceData  = null;
+  bossDefeatedTimer = 0;
+  pendingBossReward = false;
+  TOWERS.length       = 0;
+  ENEMIES.length      = 0;
+  BULLETS.length      = 0;
+  PARTICLES.length    = 0;
+  CHAIN_LINES.length  = 0;
+  SPLASH_EFFECTS.length    = 0;
+  FROST_BURSTS.length      = 0;
+  MAGE_TRAILS.length       = 0;
+  DEBUG_SPLASH_RINGS.length = 0;
+  DEBUG_HIT_FLASHES.length  = 0;
+  document.getElementById('rerollBtn').style.display = 'none';
+  updateTowerBtnStyles();
+}
+
 function drawGameOver() {
-  ctx.fillStyle = 'rgba(14, 11, 8, 0.85)';
-  ctx.fillRect(canvas.width / 2 - 160, canvas.height / 2 - 60, 320, 120);
+  const cx     = canvas.width / 2;
+  const cy     = canvas.height / 2;
+  const panelW = 320;
+  const panelH = 160;
+
+  ctx.fillStyle = 'rgba(14, 11, 8, 0.88)';
+  ctx.fillRect(cx - panelW / 2, cy - panelH / 2, panelW, panelH);
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(cx - panelW / 2 + 1, cy - panelH / 2 + 1, panelW - 2, panelH - 2);
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = COLORS.gold;
+  ctx.font      = 'bold 32px monospace';
+  ctx.fillText('Game Over', cx, cy - 40);
 
   ctx.fillStyle = COLORS.ash;
-  ctx.font      = '36px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 10);
+  ctx.font      = '14px monospace';
+  ctx.fillText(`Score: ${score}`, cx, cy - 10);
+  ctx.fillText(`Wave reached: ${waveNum}`, cx, cy + 12);
 
-  ctx.font = '16px monospace';
-  ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2 + 26);
+  // Play Again button
+  const btnX = cx - GAME_OVER_BTN.w / 2;
+  const btnY = cy + 36;
+  ctx.fillStyle = '#1C1410';
+  ctx.fillRect(btnX, btnY, GAME_OVER_BTN.w, GAME_OVER_BTN.h);
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(btnX + 1, btnY + 1, GAME_OVER_BTN.w - 2, GAME_OVER_BTN.h - 2);
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = '14px monospace';
+  ctx.fillText('Play Again', cx, btnY + 23);
+
   ctx.textAlign = 'left';
+
+  // Store button bounds for hit testing (y is relative to canvas center)
+  GAME_OVER_BTN.x = btnX;
+  GAME_OVER_BTN.y = btnY;
 }
 
 // ─── MAIN DRAW ───
@@ -1287,9 +1362,12 @@ function draw() {
 
 // ─── GAME LOOP ───
 function gameLoop() {
-  if (lives <= 0) {
+  if (lives <= 0 && !gameOver) gameOver = true;
+
+  if (gameOver) {
     draw();
     drawGameOver();
+    requestAnimationFrame(gameLoop);
     return;
   }
 
