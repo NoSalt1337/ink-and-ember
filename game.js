@@ -72,11 +72,36 @@ const TOWER_TYPES = {
     damage:   15,
     cost:     50,
   },
+  cannon: {
+    color:    '#8B4513',
+    range:    2.5,
+    fireRate: 90,
+    damage:   60,
+    cost:     75,
+    splash:   true,
+  },
+  frost: {
+    color:    '#4A90D9',
+    range:    3,
+    fireRate: 70,
+    damage:   8,
+    cost:     60,
+    frostSlow: true,
+  },
+  mage: {
+    color:    '#7B2D8B',
+    range:    3.5,
+    fireRate: 50,
+    damage:   25,
+    cost:     90,
+    mageDmg:  true,
+  },
 };
 
-let selectedType  = 'archer';
-let placingTower  = true;
-let selectedTower = null;
+let selectedType       = 'archer';
+let placingTower       = true;
+let selectedTower      = null;
+let notEnoughGoldTimer = 0;
 
 // ─── ENEMY DATA ───
 const ENEMIES  = [];
@@ -89,16 +114,19 @@ let spawnQueue        = [];
 let waveRewardGiven   = false;
 
 // ─── COMBAT DATA ───
-const BULLETS     = [];
-const PARTICLES   = [];
-const CHAIN_LINES = [];
+const BULLETS        = [];
+const PARTICLES      = [];
+const CHAIN_LINES    = [];
+const SPLASH_EFFECTS = []; // { x, y, life, maxLife }
+const FROST_BURSTS   = []; // { x, y, life }
+const MAGE_TRAILS    = []; // { x, y, life, color }
 
 // ─── CARD SYSTEM ───
 const CARD_POOL = [
   {
     id: 'dmg_boost', name: 'Sharp Edges', rarity: 'common',
     description: 'Damage +15%',
-    effect: t => { t.damage *= 1.15; },
+    effect: t => { t.damage *= t.mageDmg ? 1.15 * 1.2 : 1.15; },
   },
   {
     id: 'range_boost', name: 'Eagle Eye', rarity: 'common',
@@ -429,6 +457,9 @@ function updateTowers() {
         slow:        tower.slow        || false,
         bounces:     tower.stormVolley ? 2 : (tower.chain ? 1 : 0),
         plagueChain: tower.plagueChain || false,
+        splash:      tower.splash      || false,
+        frostSlow:   tower.frostSlow   || false,
+        isMage:      tower.mageDmg     || false,
         hitSet:      new Set(),
         done:        false,
       });
@@ -457,6 +488,9 @@ function updateBullets() {
     } else {
       bullet.x += (dx / dist) * bullet.speed;
       bullet.y += (dy / dist) * bullet.speed;
+      if (bullet.isMage) {
+        MAGE_TRAILS.push({ x: bullet.x, y: bullet.y, life: 8, color: bullet.color });
+      }
     }
   }
 
@@ -471,10 +505,11 @@ function applyStatusEffects(bullet, enemy) {
     enemy.poisonDamage   = 3;
     enemy.poisonDuration = 180;
   }
-  if (bullet.slow) {
-    const bonus      = (enemy.poisoned && enemy.slowed) ? 1.5 : 1;
-    enemy.slowed     = true;
-    enemy.slowTimer  = Math.round(120 * bonus);
+  if (bullet.slow || bullet.frostSlow) {
+    const base  = bullet.frostSlow ? 180 : 120; // frost lasts 50% longer
+    const bonus = (enemy.poisoned && enemy.slowed) ? 1.5 : 1;
+    enemy.slowed    = true;
+    enemy.slowTimer = Math.round(base * bonus);
   }
 }
 
@@ -486,6 +521,23 @@ function hitEnemy(bullet, enemy) {
   applyStatusEffects(bullet, enemy);
 
   if (enemy.hp <= 0) killEnemy(enemy);
+
+  // Cannon splash
+  if (bullet.splash) {
+    SPLASH_EFFECTS.push({ x: enemy.x, y: enemy.y, life: 15, maxLife: 15 });
+    for (const e of ENEMIES) {
+      if (e === enemy || e.done) continue;
+      if (Math.hypot(e.x - enemy.x, e.y - enemy.y) <= 50) {
+        e.hp -= bullet.dmg * 0.4;
+        if (e.hp <= 0) killEnemy(e);
+      }
+    }
+  }
+
+  // Frost burst
+  if (bullet.frostSlow) {
+    FROST_BURSTS.push({ x: enemy.x, y: enemy.y, life: 12 });
+  }
 
   // Chain / Storm Volley bounce
   if (bullet.bounces > 0) {
@@ -546,6 +598,18 @@ function updateParticles() {
   for (let i = CHAIN_LINES.length - 1; i >= 0; i--) {
     if (CHAIN_LINES[i].life <= 0) CHAIN_LINES.splice(i, 1);
   }
+  for (const s of SPLASH_EFFECTS) s.life--;
+  for (let i = SPLASH_EFFECTS.length - 1; i >= 0; i--) {
+    if (SPLASH_EFFECTS[i].life <= 0) SPLASH_EFFECTS.splice(i, 1);
+  }
+  for (const f of FROST_BURSTS) f.life--;
+  for (let i = FROST_BURSTS.length - 1; i >= 0; i--) {
+    if (FROST_BURSTS[i].life <= 0) FROST_BURSTS.splice(i, 1);
+  }
+  for (const m of MAGE_TRAILS) m.life--;
+  for (let i = MAGE_TRAILS.length - 1; i >= 0; i--) {
+    if (MAGE_TRAILS[i].life <= 0) MAGE_TRAILS.splice(i, 1);
+  }
 }
 
 // ─── PLACEMENT HANDLER ───
@@ -601,6 +665,12 @@ function handleTileClick(pixelX, pixelY) {
   }
 
   const type = TOWER_TYPES[selectedType];
+  if (gold < type.cost) {
+    notEnoughGoldTimer = 120;
+    return;
+  }
+
+  gold -= type.cost;
   TOWERS.push({
     col,
     row,
@@ -612,6 +682,9 @@ function handleTileClick(pixelX, pixelY) {
     fireRate:  type.fireRate,
     damage:    type.damage,
     cost:      type.cost,
+    splash:    type.splash    || false,
+    frostSlow: type.frostSlow || false,
+    mageDmg:   type.mageDmg   || false,
     cardSlots: [],
     angle:     0,
     timer:     0,
@@ -632,6 +705,23 @@ canvas.addEventListener('touchend', e => {
 });
 
 document.getElementById('sendWaveBtn').addEventListener('click', spawnWave);
+
+['archer','cannon','frost','mage'].forEach(type => {
+  document.getElementById(`btn_${type}`).addEventListener('click', () => {
+    selectedType = type;
+    updateTowerBtnStyles();
+  });
+});
+
+function updateTowerBtnStyles() {
+  ['archer','cannon','frost','mage'].forEach(type => {
+    const btn = document.getElementById(`btn_${type}`);
+    btn.style.borderColor = type === selectedType
+      ? TOWER_TYPES[type].color
+      : '#444';
+    btn.style.opacity = type === selectedType ? '1' : '0.65';
+  });
+}
 
 document.getElementById('rerollBtn').addEventListener('click', () => {
   if (gold >= 30) {
@@ -659,21 +749,74 @@ function drawMap() {
 }
 
 // ─── DRAW TOWERS ───
-function drawTowers() {
-  for (const tower of TOWERS) {
-    const x     = tower.col * TILE;
-    const y     = tower.row * TILE;
-    const inset = 4;
+function drawTowerShape(tower) {
+  const x  = tower.col * TILE;
+  const y  = tower.row * TILE;
+  const cx = tower.cx;
+  const cy = tower.cy;
 
-    ctx.fillStyle = tower.color;
-    ctx.fillRect(x + inset, y + inset, TILE - inset * 2, TILE - inset * 2);
+  ctx.fillStyle = tower.color;
 
+  if (tower.type === 'archer') {
+    // Square base, thin long barrel
+    ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
     ctx.save();
-    ctx.translate(tower.cx, tower.cy);
+    ctx.translate(cx, cy);
     ctx.rotate(tower.angle);
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, -3, TILE / 2 - 2, 6);
+    ctx.fillRect(2, -2, TILE / 2, 4);
     ctx.restore();
+
+  } else if (tower.type === 'cannon') {
+    // Wider base, short thick barrel
+    ctx.fillRect(x + 4, y + 4, TILE - 8, TILE - 8);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tower.angle);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(2, -5, TILE / 2 - 6, 10);
+    ctx.restore();
+
+  } else if (tower.type === 'frost') {
+    // Square base + diamond on top
+    ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
+    ctx.save();
+    ctx.translate(cx, cy - 2);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#A8D4F0';
+    ctx.fillRect(-5, -5, 10, 10);
+    ctx.restore();
+    // thin barrel
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tower.angle);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(2, -2, TILE / 2 - 4, 4);
+    ctx.restore();
+
+  } else if (tower.type === 'mage') {
+    // Square base + circle on top
+    ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
+    ctx.beginPath();
+    ctx.arc(cx, cy - 2, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#C060D8';
+    ctx.fill();
+    // thin barrel
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tower.angle);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(2, -2, TILE / 2 - 4, 4);
+    ctx.restore();
+  }
+}
+
+function drawTowers() {
+  for (const tower of TOWERS) {
+    const x = tower.col * TILE;
+    const y = tower.row * TILE;
+
+    drawTowerShape(tower);
 
     if (tower === selectedTower) {
       ctx.strokeStyle = COLORS.amber;
@@ -770,6 +913,16 @@ function drawEnemies() {
 
 // ─── DRAW BULLETS ───
 function drawBullets() {
+  // Mage trails
+  for (const m of MAGE_TRAILS) {
+    ctx.globalAlpha = m.life / 8;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = m.color;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   // Chain lines
   for (const cl of CHAIN_LINES) {
     ctx.globalAlpha = cl.life / 10;
@@ -782,9 +935,39 @@ function drawBullets() {
   }
   ctx.globalAlpha = 1;
 
-  for (const bullet of BULLETS) {
+  // Splash effects — expanding amber circle
+  for (const s of SPLASH_EFFECTS) {
+    const progress = 1 - s.life / s.maxLife;
+    const radius   = 50 * progress;
+    ctx.globalAlpha = s.life / s.maxLife;
+    ctx.strokeStyle = COLORS.amber;
+    ctx.lineWidth   = 2;
     ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Frost bursts — 8 radiating white lines
+  for (const f of FROST_BURSTS) {
+    ctx.globalAlpha = f.life / 12;
+    ctx.strokeStyle = '#DDEEFF';
+    ctx.lineWidth   = 1.5;
+    const len = 10;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(f.x, f.y);
+      ctx.lineTo(f.x + Math.cos(angle) * len, f.y + Math.sin(angle) * len);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  for (const bullet of BULLETS) {
+    const r = bullet.isMage ? 5 : 3;
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, r, 0, Math.PI * 2);
     ctx.fillStyle = bullet.color;
     ctx.fill();
   }
@@ -823,6 +1006,17 @@ function drawHUD() {
   lines.forEach((line, i) => {
     ctx.fillText(line, 6 + pad, 6 + pad + lineH * i + 12);
   });
+
+  // Not enough gold message
+  if (notEnoughGoldTimer > 0) {
+    ctx.fillStyle   = COLORS.crimson;
+    ctx.font        = 'bold 14px monospace';
+    ctx.textAlign   = 'center';
+    ctx.globalAlpha = Math.min(1, notEnoughGoldTimer / 30);
+    ctx.fillText('Not enough gold!', canvas.width / 2, canvas.height - 16);
+    ctx.textAlign   = 'left';
+    ctx.globalAlpha = 1;
+  }
 
   // Synergy notification
   if (synergyTimer > 0) {
@@ -885,8 +1079,9 @@ function gameLoop() {
     return;
   }
 
-  if (synergyTimer > 0) synergyTimer--;
-  if (cardFullTimer > 0) cardFullTimer--;
+  if (synergyTimer > 0)        synergyTimer--;
+  if (cardFullTimer > 0)       cardFullTimer--;
+  if (notEnoughGoldTimer > 0)  notEnoughGoldTimer--;
 
   if (!cardOfferActive && selectedCard === null) {
     updateSpawnQueue();
@@ -906,4 +1101,5 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
+updateTowerBtnStyles();
 gameLoop();
