@@ -103,6 +103,14 @@ let placingTower       = true;
 let selectedTower      = null;
 let notEnoughGoldTimer = 0;
 
+// ─── ENEMY TYPES ───
+const ENEMY_TYPES = {
+  basic:   { hpMult: 1,    speedMult: 1,   size: 10, color: '#8B1A1A', reward: 15, armor: 0,   label: ''        },
+  armored: { hpMult: 2,    speedMult: 0.7, size: 12, color: '#5A5A5A', reward: 25, armor: 0.4, label: 'Armored' },
+  fast:    { hpMult: 0.5,  speedMult: 2.5, size: 7,  color: '#C85A1A', reward: 20, armor: 0,   label: 'Swift'   },
+  swarm:   { hpMult: 0.3,  speedMult: 1.2, size: 6,  color: '#8B1A8B', reward: 10, armor: 0,   label: 'Swarm'   },
+};
+
 // ─── ENEMY DATA ───
 const ENEMIES  = [];
 let waveNum    = 0;
@@ -113,6 +121,7 @@ let spawning          = false;
 let spawnQueue        = [];
 let waveRewardGiven   = false;
 let gameOver          = false;
+let waveCompositionPreview = []; // [{ type, color }] for HUD dots
 
 // ─── BOSS STATE ───
 let bossAnnounceTimer  = 0;   // counts down 180 frames (3s) before spawning
@@ -449,6 +458,24 @@ function drawCardOffer() {
   }
 }
 
+// ─── WAVE COMPOSITION ───
+function pickEnemyType(waveNum) {
+  let pool;
+  if      (waveNum <= 3)  pool = [['basic', 1]];
+  else if (waveNum <= 6)  pool = [['basic', 0.6],  ['fast', 0.4]];
+  else if (waveNum <= 9)  pool = [['basic', 0.4],  ['fast', 0.3],  ['armored', 0.3]];
+  else if (waveNum <= 14) pool = [['basic', 0.3],  ['fast', 0.25], ['armored', 0.25], ['swarm', 0.2]];
+  else                    pool = [['basic', 0.15], ['fast', 0.2],  ['armored', 0.25], ['swarm', 0.4]];
+
+  const r = Math.random();
+  let cum = 0;
+  for (const [type, w] of pool) {
+    cum += w;
+    if (r < cum) return type;
+  }
+  return pool[pool.length - 1][0];
+}
+
 // ─── SPAWN WAVE ───
 function makeBossTemplate() {
   const resistances = ['slow', 'poison', 'chain'];
@@ -473,7 +500,7 @@ function spawnBossWave() {
   const escortHp = 40 + waveNum * 20;
   spawnQueue = [
     { ...boss, delay: 0 },
-    ...Array.from({ length: 5 }, (_, i) => ({ hp: escortHp, delay: (i + 1) * 60 })),
+    ...Array.from({ length: 5 }, (_, i) => ({ enemyType: 'basic', hp: escortHp, delay: (i + 1) * 60 })),
   ];
 }
 
@@ -488,9 +515,29 @@ function spawnWave() {
     spawnBossWave();
   } else {
     const count   = 5 + waveNum * 3;
-    const enemyHp = 40 + waveNum * 20;
-    for (let i = 0; i < count; i++) {
-      spawnQueue.push({ hp: enemyHp, delay: i * 45 });
+    const baseHp  = 40 + waveNum * 20;
+
+    waveCompositionPreview = [];
+    let delay = 0;
+    let i     = 0;
+    while (i < count) {
+      const type = pickEnemyType(waveNum);
+      const def  = ENEMY_TYPES[type];
+
+      if (type === 'swarm') {
+        for (let j = 0; j < 4 && i < count; j++, i++) {
+          spawnQueue.push({ enemyType: type, hp: baseHp * def.hpMult, delay: delay + j * 8 });
+        }
+        delay += 4 * 8 + 30;
+      } else {
+        spawnQueue.push({ enemyType: type, hp: baseHp * def.hpMult, delay });
+        delay += 45;
+        i++;
+      }
+
+      if (!waveCompositionPreview.find(e => e.type === type)) {
+        waveCompositionPreview.push({ type, color: def.color });
+      }
     }
   }
 }
@@ -520,14 +567,25 @@ function updateSpawnQueue() {
         done:       false,
       });
     } else {
+      const eType = template.enemyType || 'basic';
+      const def   = ENEMY_TYPES[eType];
       ENEMIES.push({
-        x:       start.col * TILE + TILE / 2,
-        y:       start.row * TILE + TILE / 2,
-        pathIdx: 0,
-        hp:      template.hp,
-        maxHp:   template.hp,
-        speed:   1.5 + waveNum * 0.05,
-        done:    false,
+        x:               start.col * TILE + TILE / 2,
+        y:               start.row * TILE + TILE / 2,
+        pathIdx:         0,
+        hp:              template.hp,
+        maxHp:           template.hp,
+        speed:           (1.5 + waveNum * 0.05) * def.speedMult,
+        size:            def.size,
+        color:           def.color,
+        enemyType:       eType,
+        armor:           def.armor,
+        reward:          def.reward,
+        trail:           [],
+        jitterX:         0,
+        jitterY:         0,
+        entryLabelTimer: def.label ? 60 : 0,
+        done:            false,
       });
     }
     if (spawnQueue.length === 0) spawning = false;
@@ -545,7 +603,7 @@ function killEnemy(enemy, sourceBullet) {
     bossDefeatedTimer = 120;
     pendingBossReward = true;
   } else {
-    gold  += 15;
+    gold  += enemy.reward || 15;
     score += 10;
     spawnParticles(enemy.x, enemy.y, 8);
   }
@@ -574,6 +632,21 @@ function updateEnemies() {
       enemy.slowTimer--;
       if (enemy.slowTimer <= 0) enemy.slowed = false;
     }
+
+    // Trail tracking for fast enemies
+    if (enemy.enemyType === 'fast') {
+      enemy.trail.push({ x: enemy.x, y: enemy.y });
+      if (enemy.trail.length > 3) enemy.trail.shift();
+    }
+
+    // Swarm jitter
+    if (enemy.enemyType === 'swarm') {
+      enemy.jitterX = (Math.random() - 0.5) * 4;
+      enemy.jitterY = (Math.random() - 0.5) * 4;
+    }
+
+    // Entry label fade
+    if (enemy.entryLabelTimer > 0) enemy.entryLabelTimer--;
 
     const next = PATH[enemy.pathIdx + 1];
     if (!next) {
@@ -649,6 +722,7 @@ function updateTowers() {
         isMage:      tower.mageDmg     || false,
         ricochet:    tower.ricochet    || false,
         vampiric:    tower.vampiric    || false,
+        armorPierce: tower.armorPierce || 0,
         sourceTower: tower,
         hitSet:      new Set(),
         done:        false,
@@ -721,7 +795,8 @@ function hitEnemy(bullet, enemy) {
   if (enemy.done) return;
 
   bullet.hitSet.add(enemy);
-  const dmg = bullet.armorPierce ? bullet.dmg / (1 - bullet.armorPierce) : bullet.dmg;
+  const effectiveArmor = (enemy.armor || 0) * (1 - (bullet.armorPierce || 0));
+  const dmg = bullet.dmg * (1 - effectiveArmor);
   enemy.hp -= dmg;
   applyStatusEffects(bullet, enemy);
 
@@ -1137,45 +1212,121 @@ function drawTowers() {
 // ─── DRAW ENEMIES ───
 const RESISTANCE_DOT_COLOR = { slow: '#2D4F9E', poison: '#2D7A2D', chain: '#C87941' };
 
+function drawPentagon(cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    if (i === 0) ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    else         ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  ctx.closePath();
+}
+
+function drawEnemyBody(enemy) {
+  const type = enemy.enemyType || 'basic';
+  const r    = enemy.size || 10;
+
+  if (type === 'fast') {
+    // Motion trail
+    for (let i = 0; i < enemy.trail.length; i++) {
+      const t     = enemy.trail[i];
+      const alpha = (i + 1) / (enemy.trail.length + 1) * 0.5;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, r * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = enemy.color;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // Body
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = enemy.color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, r * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#E0804A';
+    ctx.fill();
+
+  } else if (type === 'armored') {
+    const dx = enemy.x + enemy.jitterX;
+    const dy = enemy.y + enemy.jitterY;
+    // Body
+    ctx.beginPath();
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+    ctx.fillStyle = enemy.color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(dx, dy, r - 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#888';
+    ctx.fill();
+    // Shield ring
+    ctx.beginPath();
+    ctx.arc(dx, dy, r + 2, 0, Math.PI * 2);
+    ctx.strokeStyle = '#A0A0A0';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    // Shield pentagon
+    drawPentagon(dx, dy, r - 1);
+    ctx.strokeStyle = '#CCCCCC';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+  } else if (type === 'swarm') {
+    const dx = enemy.x + enemy.jitterX;
+    const dy = enemy.y + enemy.jitterY;
+    ctx.beginPath();
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+    ctx.fillStyle = enemy.color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(dx, dy, r * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#CC55CC';
+    ctx.fill();
+
+  } else {
+    // basic
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#8B1A1A';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, r * 0.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#B03030';
+    ctx.fill();
+  }
+}
+
 function drawEnemies() {
   for (const enemy of ENEMIES) {
-    const r = enemy.isBoss ? 20 : 10;
+    const r  = enemy.isBoss ? 20 : (enemy.size || 10);
+    const ex = enemy.x;
+    const ey = enemy.y;
 
     if (enemy.isBoss) {
       // Boss body
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.arc(ex, ey, r, 0, Math.PI * 2);
       ctx.fillStyle = '#8B1A1A';
       ctx.fill();
-
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, r - 5, 0, Math.PI * 2);
+      ctx.arc(ex, ey, r - 5, 0, Math.PI * 2);
       ctx.fillStyle = '#C03030';
       ctx.fill();
-
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.arc(ex, ey, r, 0, Math.PI * 2);
       ctx.strokeStyle = '#111';
       ctx.lineWidth   = 3;
       ctx.stroke();
     } else {
-      // Normal body
-      ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = '#8B1A1A';
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = '#B03030';
-      ctx.fill();
+      drawEnemyBody(enemy);
     }
 
-    // Status tints
+    // Status tints (applied to actual position, not jittered)
     if (enemy.poisoned) {
       ctx.globalAlpha = 0.4;
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.arc(ex, ey, r, 0, Math.PI * 2);
       ctx.fillStyle = '#2D7A2D';
       ctx.fill();
       ctx.globalAlpha = 1;
@@ -1183,7 +1334,7 @@ function drawEnemies() {
     if (enemy.slowed) {
       ctx.globalAlpha = 0.4;
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+      ctx.arc(ex, ey, r, 0, Math.PI * 2);
       ctx.fillStyle = '#2D4F9E';
       ctx.fill();
       ctx.globalAlpha = 1;
@@ -1192,31 +1343,44 @@ function drawEnemies() {
     // Health bar
     const barW = enemy.isBoss ? 44 : 20;
     const barH = enemy.isBoss ? 5  : 3;
-    const bx   = enemy.x - barW / 2;
-    const by   = enemy.y - r - 10;
+    const bx   = ex - barW / 2;
+    const by   = ey - r - 10;
     ctx.fillStyle = '#333';
     ctx.fillRect(bx, by, barW, barH);
     ctx.fillStyle = COLORS.crimson;
     ctx.fillRect(bx, by, barW * (enemy.hp / enemy.maxHp), barH);
 
-    // Boss name + resistance shield dot
+    // Boss name + resistance dot
     if (enemy.isBoss) {
       ctx.fillStyle = COLORS.ash;
       ctx.font      = 'bold 9px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(enemy.name, enemy.x, by - 4);
+      ctx.fillText(enemy.name, ex, by - 4);
       ctx.textAlign = 'left';
 
-      // Resistance dot to the right of bar
       ctx.beginPath();
       ctx.arc(bx + barW + 6, by + barH / 2, 4, 0, Math.PI * 2);
       ctx.fillStyle = RESISTANCE_DOT_COLOR[enemy.resistance] || COLORS.ash;
       ctx.fill();
     }
 
+    // Entry label (fades over 60 frames)
+    if (enemy.entryLabelTimer > 0) {
+      const def = ENEMY_TYPES[enemy.enemyType];
+      if (def && def.label) {
+        ctx.globalAlpha = Math.min(1, enemy.entryLabelTimer / 20);
+        ctx.fillStyle   = def.color;
+        ctx.font        = 'bold 9px monospace';
+        ctx.textAlign   = 'center';
+        ctx.fillText(def.label, ex, by - (enemy.isBoss ? 18 : 4));
+        ctx.textAlign   = 'left';
+        ctx.globalAlpha = 1;
+      }
+    }
+
     // Status icon dots above health bar
-    let dotX = enemy.x - 4;
-    const dotY = by - (enemy.isBoss ? 14 : 6);
+    let dotX      = ex - 4;
+    const dotY    = by - (enemy.isBoss ? 14 : 6);
     if (enemy.poisoned) {
       ctx.beginPath();
       ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
@@ -1352,6 +1516,20 @@ function drawHUD() {
     ctx.fillText(line, 6 + pad, 6 + pad + lineH * i + 12);
   });
 
+  // Wave composition preview dots
+  if (waveCompositionPreview.length > 0) {
+    const dotR  = 4;
+    const dotY  = 6 + panelH + 8 + dotR;
+    let   dotX  = 6 + pad;
+    for (const entry of waveCompositionPreview) {
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = entry.color;
+      ctx.fill();
+      dotX += dotR * 2 + 4;
+    }
+  }
+
   // Not enough gold message
   if (notEnoughGoldTimer > 0) {
     ctx.fillStyle   = COLORS.crimson;
@@ -1459,10 +1637,11 @@ function restartGame() {
   selectedTower   = null;
   selectedCard    = null;
   cardOfferActive = false;
-  bossAnnounceTimer = 0;
-  bossAnnounceData  = null;
-  bossDefeatedTimer = 0;
-  pendingBossReward = false;
+  bossAnnounceTimer      = 0;
+  bossAnnounceData       = null;
+  bossDefeatedTimer      = 0;
+  pendingBossReward      = false;
+  waveCompositionPreview = [];
   TOWERS.length       = 0;
   ENEMIES.length      = 0;
   BULLETS.length      = 0;
