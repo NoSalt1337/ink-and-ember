@@ -89,8 +89,9 @@ let spawnQueue        = [];
 let waveRewardGiven   = false;
 
 // ─── COMBAT DATA ───
-const BULLETS   = [];
-const PARTICLES = [];
+const BULLETS     = [];
+const PARTICLES   = [];
+const CHAIN_LINES = [];
 
 // ─── CARD SYSTEM ───
 const CARD_POOL = [
@@ -341,9 +342,33 @@ function updateSpawnQueue() {
 }
 
 // ─── ENEMY MOVEMENT ───
+function killEnemy(enemy) {
+  enemy.hp   = 0;
+  enemy.done = true;
+  gold  += 15;
+  score += 10;
+  spawnParticles(enemy.x, enemy.y);
+}
+
 function updateEnemies() {
   for (const enemy of ENEMIES) {
     if (enemy.done) continue;
+
+    // ── Poison tick ──
+    if (enemy.poisoned && enemy.poisonDuration > 0) {
+      enemy.poisonDuration--;
+      if (enemy.poisonDuration % 20 === 0) {
+        enemy.hp -= enemy.poisonDamage;
+        if (enemy.hp <= 0) { killEnemy(enemy); continue; }
+      }
+      if (enemy.poisonDuration <= 0) enemy.poisoned = false;
+    }
+
+    // ── Slow tick ──
+    if (enemy.slowed && enemy.slowTimer > 0) {
+      enemy.slowTimer--;
+      if (enemy.slowTimer <= 0) enemy.slowed = false;
+    }
 
     const next = PATH[enemy.pathIdx + 1];
     if (!next) {
@@ -352,19 +377,20 @@ function updateEnemies() {
       continue;
     }
 
+    const effectiveSpeed = enemy.slowed ? enemy.speed * 0.6 : enemy.speed;
     const tx   = next.col * TILE + TILE / 2;
     const ty   = next.row * TILE + TILE / 2;
     const dx   = tx - enemy.x;
     const dy   = ty - enemy.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist <= enemy.speed) {
+    if (dist <= effectiveSpeed) {
       enemy.x = tx;
       enemy.y = ty;
       enemy.pathIdx++;
     } else {
-      enemy.x += (dx / dist) * enemy.speed;
-      enemy.y += (dy / dist) * enemy.speed;
+      enemy.x += (dx / dist) * effectiveSpeed;
+      enemy.y += (dy / dist) * effectiveSpeed;
     }
   }
 
@@ -393,16 +419,18 @@ function updateTowers() {
 
     if (tower.timer <= 0) {
       BULLETS.push({
-        x:      tower.cx,
-        y:      tower.cy,
-        tx:     target,
-        speed:  7,
-        dmg:    tower.damage,
-        color:  tower.color,
-        poison: tower.poison  || false,
-        slow:   tower.slow    || false,
-        chain:  tower.chain   || false,
-        done:   false,
+        x:           tower.cx,
+        y:           tower.cy,
+        tx:          target,
+        speed:       7,
+        dmg:         tower.damage,
+        color:       tower.color,
+        poison:      tower.poison      || false,
+        slow:        tower.slow        || false,
+        bounces:     tower.stormVolley ? 2 : (tower.chain ? 1 : 0),
+        plagueChain: tower.plagueChain || false,
+        hitSet:      new Set(),
+        done:        false,
       });
       tower.timer = tower.fireRate;
     }
@@ -437,48 +465,53 @@ function updateBullets() {
   }
 }
 
+function applyStatusEffects(bullet, enemy) {
+  if (bullet.poison) {
+    enemy.poisoned       = true;
+    enemy.poisonDamage   = 3;
+    enemy.poisonDuration = 180;
+  }
+  if (bullet.slow) {
+    const bonus      = (enemy.poisoned && enemy.slowed) ? 1.5 : 1;
+    enemy.slowed     = true;
+    enemy.slowTimer  = Math.round(120 * bonus);
+  }
+}
+
 function hitEnemy(bullet, enemy) {
   if (enemy.done) return;
 
+  bullet.hitSet.add(enemy);
   enemy.hp -= bullet.dmg;
+  applyStatusEffects(bullet, enemy);
 
-  if (bullet.poison) {
-    enemy.poisoned    = true;
-    enemy.poisonTimer = 180; // 3s at 60fps
-  }
-  if (bullet.slow) {
-    enemy.slowed    = true;
-    enemy.slowTimer = 120;
-  }
+  if (enemy.hp <= 0) killEnemy(enemy);
 
-  if (enemy.hp <= 0) {
-    enemy.hp   = 0;
-    enemy.done = true;
-    gold  += 15;
-    score += 10;
-    spawnParticles(enemy.x, enemy.y);
-  }
-
-  // Chain: bounce to nearest other live enemy
-  if (bullet.chain && !bullet.chained) {
-    const others = ENEMIES.filter(e => e !== enemy && !e.done);
+  // Chain / Storm Volley bounce
+  if (bullet.bounces > 0) {
+    const others = ENEMIES.filter(e =>
+      !e.done && !bullet.hitSet.has(e) &&
+      Math.hypot(e.x - enemy.x, e.y - enemy.y) <= 150
+    );
     if (others.length > 0) {
       const nearest = others.reduce((best, e) =>
         Math.hypot(e.x - enemy.x, e.y - enemy.y) <
         Math.hypot(best.x - enemy.x, best.y - enemy.y) ? e : best
       );
+      CHAIN_LINES.push({ x1: enemy.x, y1: enemy.y, x2: nearest.x, y2: nearest.y, life: 10 });
       BULLETS.push({
-        x:       enemy.x,
-        y:       enemy.y,
-        tx:      nearest,
-        speed:   bullet.speed,
-        dmg:     bullet.dmg * 0.6,
-        color:   bullet.color,
-        poison:  bullet.poison,
-        slow:    bullet.slow,
-        chain:   false,
-        chained: true,
-        done:    false,
+        x:           enemy.x,
+        y:           enemy.y,
+        tx:          nearest,
+        speed:       bullet.speed,
+        dmg:         bullet.dmg * 0.6,
+        color:       bullet.color,
+        poison:      bullet.plagueChain ? true : bullet.poison,
+        slow:        bullet.slow,
+        bounces:     bullet.bounces - 1,
+        plagueChain: bullet.plagueChain,
+        hitSet:      bullet.hitSet,
+        done:        false,
       });
     }
   }
@@ -508,6 +541,10 @@ function updateParticles() {
   }
   for (let i = PARTICLES.length - 1; i >= 0; i--) {
     if (PARTICLES[i].life <= 0) PARTICLES.splice(i, 1);
+  }
+  for (const cl of CHAIN_LINES) cl.life--;
+  for (let i = CHAIN_LINES.length - 1; i >= 0; i--) {
+    if (CHAIN_LINES[i].life <= 0) CHAIN_LINES.splice(i, 1);
   }
 }
 
@@ -673,6 +710,7 @@ function drawTowers() {
 // ─── DRAW ENEMIES ───
 function drawEnemies() {
   for (const enemy of ENEMIES) {
+    // Base body
     ctx.beginPath();
     ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
     ctx.fillStyle = '#8B1A1A';
@@ -683,6 +721,25 @@ function drawEnemies() {
     ctx.fillStyle = '#B03030';
     ctx.fill();
 
+    // Status tints
+    if (enemy.poisoned) {
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#2D7A2D';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    if (enemy.slowed) {
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#2D4F9E';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Health bar
     const barW = 20;
     const barH = 3;
     const bx   = enemy.x - barW / 2;
@@ -691,11 +748,40 @@ function drawEnemies() {
     ctx.fillRect(bx, by, barW, barH);
     ctx.fillStyle = COLORS.crimson;
     ctx.fillRect(bx, by, barW * (enemy.hp / enemy.maxHp), barH);
+
+    // Status icon dots above health bar
+    let dotX = enemy.x - 4;
+    const dotY = by - 6;
+    if (enemy.poisoned) {
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#2D7A2D';
+      ctx.fill();
+      dotX += 8;
+    }
+    if (enemy.slowed) {
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#2D4F9E';
+      ctx.fill();
+    }
   }
 }
 
 // ─── DRAW BULLETS ───
 function drawBullets() {
+  // Chain lines
+  for (const cl of CHAIN_LINES) {
+    ctx.globalAlpha = cl.life / 10;
+    ctx.strokeStyle = COLORS.amber;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cl.x1, cl.y1);
+    ctx.lineTo(cl.x2, cl.y2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
   for (const bullet of BULLETS) {
     ctx.beginPath();
     ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
