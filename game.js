@@ -117,9 +117,11 @@ let waveRewardGiven   = false;
 const BULLETS        = [];
 const PARTICLES      = [];
 const CHAIN_LINES    = [];
-const SPLASH_EFFECTS = []; // { x, y, life, maxLife }
-const FROST_BURSTS   = []; // { x, y, life }
-const MAGE_TRAILS    = []; // { x, y, life, color }
+const SPLASH_EFFECTS    = []; // { x, y, life, maxLife }
+const FROST_BURSTS      = []; // { x, y, life }
+const MAGE_TRAILS       = []; // { x, y, life, color }
+const DEBUG_SPLASH_RINGS = []; // DEBUG - remove before release  { x, y, life }
+const DEBUG_HIT_FLASHES  = []; // DEBUG - remove before release  { enemy, life }
 
 // ─── CARD SYSTEM ───
 const CARD_POOL = [
@@ -525,10 +527,12 @@ function hitEnemy(bullet, enemy) {
   // Cannon splash
   if (bullet.splash) {
     SPLASH_EFFECTS.push({ x: enemy.x, y: enemy.y, life: 15, maxLife: 15 });
+    DEBUG_SPLASH_RINGS.push({ x: enemy.x, y: enemy.y, life: 30 }); // DEBUG - remove before release
     for (const e of ENEMIES) {
       if (e === enemy || e.done) continue;
       if (Math.hypot(e.x - enemy.x, e.y - enemy.y) <= 50) {
         e.hp -= bullet.dmg * 0.4;
+        DEBUG_HIT_FLASHES.push({ enemy: e, life: 12 }); // DEBUG - remove before release
         if (e.hp <= 0) killEnemy(e);
       }
     }
@@ -609,6 +613,15 @@ function updateParticles() {
   for (const m of MAGE_TRAILS) m.life--;
   for (let i = MAGE_TRAILS.length - 1; i >= 0; i--) {
     if (MAGE_TRAILS[i].life <= 0) MAGE_TRAILS.splice(i, 1);
+  }
+  // DEBUG - remove before release
+  for (const r of DEBUG_SPLASH_RINGS) r.life--;
+  for (let i = DEBUG_SPLASH_RINGS.length - 1; i >= 0; i--) {
+    if (DEBUG_SPLASH_RINGS[i].life <= 0) DEBUG_SPLASH_RINGS.splice(i, 1);
+  }
+  for (const f of DEBUG_HIT_FLASHES) f.life--;
+  for (let i = DEBUG_HIT_FLASHES.length - 1; i >= 0; i--) {
+    if (DEBUG_HIT_FLASHES[i].life <= 0) DEBUG_HIT_FLASHES.splice(i, 1);
   }
 }
 
@@ -705,6 +718,23 @@ canvas.addEventListener('touchend', e => {
 });
 
 document.getElementById('sendWaveBtn').addEventListener('click', spawnWave);
+
+// DEBUG - remove before release
+function testCannon() {
+  const start = PATH[0];
+  for (let i = 0; i < 20; i++) {
+    ENEMIES.push({
+      x:       start.col * TILE + TILE / 2,
+      y:       start.row * TILE + TILE / 2,
+      pathIdx: 0,
+      hp:      100,
+      maxHp:   100,
+      speed:   1.5,
+      done:    false,
+    });
+  }
+}
+document.getElementById('testCannonBtn').addEventListener('click', testCannon); // DEBUG - remove before release
 
 ['archer','cannon','frost','mage'].forEach(type => {
   document.getElementById(`btn_${type}`).addEventListener('click', () => {
@@ -971,6 +1001,28 @@ function drawBullets() {
     ctx.fillStyle = bullet.color;
     ctx.fill();
   }
+
+  // DEBUG - remove before release: yellow 50px splash radius ring
+  for (const r of DEBUG_SPLASH_RINGS) {
+    ctx.globalAlpha = r.life / 30;
+    ctx.strokeStyle = '#FFFF00';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, 50, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // DEBUG - remove before release: red flash on splash-hit enemies
+  for (const f of DEBUG_HIT_FLASHES) {
+    if (f.enemy.done) continue;
+    ctx.globalAlpha = f.life / 12;
+    ctx.beginPath();
+    ctx.arc(f.enemy.x, f.enemy.y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = '#FF0000';
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ─── DRAW PARTICLES ───
