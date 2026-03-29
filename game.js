@@ -34,6 +34,7 @@ const LEVELS = {
     unlockRequires: null,
     waveCount: 8,
     startingGold: 150,
+    difficulty: { goldPerKill: 12, towerCostMultiplier: 1.0, enemyHpMultiplier: 1.0, enemyCountMultiplier: 1.0 },
     map: [
       [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
@@ -65,6 +66,7 @@ const LEVELS = {
     unlockRequires: '1',
     waveCount: 10,
     startingGold: 150,
+    difficulty: { goldPerKill: 10, towerCostMultiplier: 1.1, enemyHpMultiplier: 1.2, enemyCountMultiplier: 1.1 },
     map: [
       [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
@@ -94,6 +96,7 @@ const LEVELS = {
     unlockRequires: '2',
     waveCount: 12,
     startingGold: 200,
+    difficulty: { goldPerKill: 8, towerCostMultiplier: 1.2, enemyHpMultiplier: 1.4, enemyCountMultiplier: 1.2 },
     map: [
       [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
       [1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2],
@@ -123,6 +126,7 @@ const LEVELS = {
     unlockRequires: '3',
     waveCount: 6,
     startingGold: 150,
+    difficulty: { goldPerKill: 10, towerCostMultiplier: 1.15, enemyHpMultiplier: 1.5, enemyCountMultiplier: 1.3 },
     map: [
       [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       [1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
@@ -156,6 +160,7 @@ const PROGRESS = { '1': {beaten:false}, '2': {beaten:false}, '3': {beaten:false}
 let currentLevel          = null;
 let levelSpeedMultiplier  = 1.0;
 let levelBossFrequency    = 5;
+let currentDifficulty     = { goldPerKill: 12, towerCostMultiplier: 1.0, enemyHpMultiplier: 1.0, enemyCountMultiplier: 1.0 };
 let levelVictory          = false;
 let backConfirmActive     = false;
 const VICTORY_BTN      = { w: 160, h: 36 };
@@ -687,7 +692,7 @@ function spawnBossWave() {
   bossAnnounceData  = { name: boss.name, resistance: boss.resistance, waveNum };
   bossAnnounceTimer = 180;
 
-  const escortHp = 40 + waveNum * 20;
+  const escortHp = Math.round((40 + waveNum * 28) * currentDifficulty.enemyHpMultiplier);
   spawnQueue = [
     { ...boss, delay: 0 },
     ...Array.from({ length: 5 }, (_, i) => ({ enemyType: 'basic', hp: escortHp, delay: (i + 1) * 60 })),
@@ -705,8 +710,8 @@ function spawnWave() {
   if (waveNum % levelBossFrequency === 0) {
     spawnBossWave();
   } else {
-    const count   = 5 + waveNum * 3;
-    const baseHp  = 40 + waveNum * 20;
+    const count   = Math.round((5 + waveNum * 4) * currentDifficulty.enemyCountMultiplier);
+    const baseHp  = Math.round((40 + waveNum * 28) * currentDifficulty.enemyHpMultiplier);
 
     waveCompositionPreview = [];
     let delay = 0;
@@ -766,7 +771,7 @@ function updateSpawnQueue() {
         pathIdx:         0,
         hp:              template.hp,
         maxHp:           template.hp,
-        speed:           (1.5 + waveNum * 0.05) * def.speedMult * levelSpeedMultiplier,
+        speed:           (1.5 + waveNum * 0.07) * def.speedMult * levelSpeedMultiplier,
         size:            def.size,
         color:           def.color,
         enemyType:       eType,
@@ -796,7 +801,7 @@ function killEnemy(enemy, sourceBullet) {
     pendingBossReward = true;
     lifetimeStats.totalBossKills++;
   } else {
-    gold  += enemy.reward || 15;
+    gold  += Math.round((enemy.reward || 15) * currentDifficulty.goldPerKill / 15);
     score += 10;
     spawnParticles(enemy.x, enemy.y, 8);
   }
@@ -1183,8 +1188,9 @@ function handleTileClick(pixelX, pixelY) {
   // In select mode — empty tile tap dismisses panel
   if (placingMode === 'select') { selectedTower = null; return; }
 
-  const typeDef = TOWER_TYPES[placingMode];
-  if (gold < typeDef.cost) {
+  const typeDef     = TOWER_TYPES[placingMode];
+  const adjustedCost = Math.round(typeDef.cost * currentDifficulty.towerCostMultiplier);
+  if (gold < adjustedCost) {
     notEnoughGoldTimer = 120;
     selectedTower = null;
     placingMode = 'select';
@@ -1192,7 +1198,7 @@ function handleTileClick(pixelX, pixelY) {
     return;
   }
 
-  gold -= typeDef.cost;
+  gold -= adjustedCost;
   TOWERS.push({
     col,
     row,
@@ -1203,7 +1209,7 @@ function handleTileClick(pixelX, pixelY) {
     range:     typeDef.range,
     fireRate:  typeDef.fireRate,
     damage:    typeDef.damage,
-    cost:      typeDef.cost,
+    cost:      adjustedCost,
     splash:    typeDef.splash    || false,
     frostSlow: typeDef.frostSlow || false,
     mageDmg:   typeDef.mageDmg   || false,
@@ -1302,7 +1308,9 @@ document.getElementById('btn_select').addEventListener('click', () => {
 
 function updateTowerBtnStyles() {
   ['archer','cannon','frost','mage'].forEach(type => {
-    const btn = document.getElementById(`btn_${type}`);
+    const btn  = document.getElementById(`btn_${type}`);
+    const cost = Math.round(TOWER_TYPES[type].cost * currentDifficulty.towerCostMultiplier);
+    btn.textContent      = `${type.charAt(0).toUpperCase() + type.slice(1)} ${cost}g`;
     btn.style.borderColor = placingMode === type ? TOWER_TYPES[type].color : '#444';
     btn.style.opacity     = placingMode === type ? '1' : '0.65';
   });
@@ -1312,8 +1320,8 @@ function updateTowerBtnStyles() {
 }
 
 document.getElementById('rerollBtn').addEventListener('click', () => {
-  if (gold >= 30) {
-    gold -= 30;
+  if (gold >= 50) {
+    gold -= 50;
     offerCards();
   }
 });
@@ -2215,6 +2223,7 @@ function loadLevel(levelKey) {
 
   levelSpeedMultiplier = currentLevel === '2' ? 1.2 : 1.0;
   levelBossFrequency   = currentLevel === '4' ? 2   : 5;
+  currentDifficulty    = level.difficulty;
 
   perfectRun = true;
   towerTypesUsed.clear();
@@ -2399,6 +2408,12 @@ function renderWorldMap() {
     nameEl.className = 'level-name';
     nameEl.textContent = level.name;
     leftDiv.appendChild(nameEl);
+
+    // Flame difficulty indicator
+    const flameEl = document.createElement('div');
+    flameEl.className = 'level-difficulty';
+    flameEl.textContent = '\uD83D\uDD25'.repeat(i); // 1–4 flames matching level number
+    leftDiv.appendChild(flameEl);
 
     if (level.constraint) {
       const cEl = document.createElement('div');

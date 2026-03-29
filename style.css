@@ -265,6 +265,14 @@ canvas {
 }
 
 /* ─── Level card badges ─── */
+.level-difficulty {
+  font-size: 11px;
+  color: #C87941;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  letter-spacing: 0.02em;
+}
+
 .level-card-badge {
   font-family: monospace;
   font-size: 10px;
