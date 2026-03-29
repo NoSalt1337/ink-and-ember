@@ -98,8 +98,7 @@ const TOWER_TYPES = {
   },
 };
 
-let selectedType       = 'archer';
-let placingTower       = true;
+let placingMode        = 'select'; // 'select' | 'archer' | 'cannon' | 'frost' | 'mage'
 let selectedTower      = null;
 let notEnoughGoldTimer = 0;
 
@@ -388,6 +387,7 @@ function drawOneCard(usedIds) {
 }
 
 function offerCards() {
+  selectedTower = null; // dismiss any open info panel
   offeredCards = [];
   const usedIds = new Set();
   for (let i = 0; i < 3; i++) {
@@ -975,34 +975,33 @@ function handleTileClick(pixelX, pixelY) {
     return;
   }
 
-  if (PATH_TILES.has(`${col},${row}`)) return;
+  if (PATH_TILES.has(`${col},${row}`)) { selectedTower = null; return; }
 
-  if (!placingTower) {
+  // In select mode — empty / path tap already dismissed above
+  if (placingMode === 'select') { selectedTower = null; return; }
+
+  const typeDef = TOWER_TYPES[placingMode];
+  if (gold < typeDef.cost) {
+    notEnoughGoldTimer = 120;
     selectedTower = null;
     return;
   }
 
-  const type = TOWER_TYPES[selectedType];
-  if (gold < type.cost) {
-    notEnoughGoldTimer = 120;
-    return;
-  }
-
-  gold -= type.cost;
+  gold -= typeDef.cost;
   TOWERS.push({
     col,
     row,
     cx:        col * TILE + TILE / 2,
     cy:        row * TILE + TILE / 2,
-    type:      selectedType,
-    color:     type.color,
-    range:     type.range,
-    fireRate:  type.fireRate,
-    damage:    type.damage,
-    cost:      type.cost,
-    splash:    type.splash    || false,
-    frostSlow: type.frostSlow || false,
-    mageDmg:   type.mageDmg   || false,
+    type:      placingMode,
+    color:     typeDef.color,
+    range:     typeDef.range,
+    fireRate:  typeDef.fireRate,
+    damage:    typeDef.damage,
+    cost:      typeDef.cost,
+    splash:    typeDef.splash    || false,
+    frostSlow: typeDef.frostSlow || false,
+    mageDmg:   typeDef.mageDmg   || false,
     cardSlots: [],
     angle:     0,
     timer:     0,
@@ -1057,19 +1056,25 @@ document.getElementById('testCannonBtn').addEventListener('click', testCannon); 
 
 ['archer','cannon','frost','mage'].forEach(type => {
   document.getElementById(`btn_${type}`).addEventListener('click', () => {
-    selectedType = type;
+    placingMode = type;
     updateTowerBtnStyles();
   });
+});
+
+document.getElementById('btn_select').addEventListener('click', () => {
+  placingMode = 'select';
+  updateTowerBtnStyles();
 });
 
 function updateTowerBtnStyles() {
   ['archer','cannon','frost','mage'].forEach(type => {
     const btn = document.getElementById(`btn_${type}`);
-    btn.style.borderColor = type === selectedType
-      ? TOWER_TYPES[type].color
-      : '#444';
-    btn.style.opacity = type === selectedType ? '1' : '0.65';
+    btn.style.borderColor = placingMode === type ? TOWER_TYPES[type].color : '#444';
+    btn.style.opacity     = placingMode === type ? '1' : '0.65';
   });
+  const selBtn = document.getElementById('btn_select');
+  selBtn.style.borderColor = placingMode === 'select' ? '#E8DDD0' : '#444';
+  selBtn.style.opacity     = placingMode === 'select' ? '1' : '0.65';
 }
 
 document.getElementById('rerollBtn').addEventListener('click', () => {
@@ -1191,20 +1196,134 @@ function drawTowers() {
       ctx.fill();
     }
 
-    // Card slot dots
-    if (tower.cardSlots.length > 0) {
-      const dotR   = 4;
-      const dotY   = y + TILE - 7;
-      const totalW = tower.cardSlots.length * (dotR * 2 + 2) - 2;
-      let   dotX   = tower.cx - totalW / 2 + dotR;
-      for (const cardId of tower.cardSlots) {
+    // Card slot squares — all slots shown (filled = rarity color, empty = grey outline)
+    const maxSlots = tower.warMachine ? 2 : (tower.type === 'ballista' ? 4 : 3);
+    const sqS = 6, sqG = 3;
+    const totalSqW = maxSlots * sqS + (maxSlots - 1) * sqG;
+    let sqX = tower.cx - totalSqW / 2;
+    const sqY = y + TILE - 9;
+    for (let s = 0; s < maxSlots; s++) {
+      const cardId = tower.cardSlots[s];
+      if (cardId) {
         const card = CARD_POOL.find(c => c.id === cardId);
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
         ctx.fillStyle = card ? RARITY_BORDER[card.rarity] : COLORS.ash;
-        ctx.fill();
-        dotX += dotR * 2 + 2;
+        ctx.fillRect(sqX, sqY, sqS, sqS);
+      } else {
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(sqX + 0.5, sqY + 0.5, sqS - 1, sqS - 1);
       }
+      sqX += sqS + sqG;
+    }
+  }
+}
+
+// ─── TOWER INFO PANEL ───
+const SYNERGY_DISPLAY = {
+  plagueChain:  'Plague Chain',
+  venomBog:     'Venom Bog',
+  stormVolley:  'Storm Volley',
+  warMachine:   'War Machine',
+  bloodPoison:  'Blood Poison',
+  fusillade:    'Fusillade',
+  sharpShooter: 'Sharpshooter',
+};
+
+function drawTowerInfoPanel(tower) {
+  const name    = tower.type.charAt(0).toUpperCase() + tower.type.slice(1);
+  const frLabel = tower.fireRate <= 55 ? 'Fast' : tower.fireRate > 80 ? 'Slow' : 'Medium';
+  const cards   = tower.cardSlots.map(id => CARD_POOL.find(c => c.id === id)).filter(Boolean);
+  const syns    = Object.keys(SYNERGY_DISPLAY).filter(k => tower[k]);
+
+  const pad   = 8;
+  const lineH = 13;
+  const W     = 148;
+
+  // Count content lines to derive panel height
+  let lines = 1           // tower name
+            + 3           // damage / range / fire rate
+            + 1           // divider row
+            + 1           // "Cards" label
+            + Math.max(1, cards.length); // card entries or "no cards" message
+  if (syns.length > 0) lines += 1 + 1 + syns.length; // gap + "Synergies" label + entries
+  const H = pad * 2 + lines * lineH + 8; // +8 extra bottom breathing room
+
+  // Horizontal: panel right of tower if on left half, left if on right half
+  const tileX = tower.col * TILE;
+  let panelX = tower.cx > canvas.width / 2
+    ? tileX - W - 4
+    : tileX + TILE + 4;
+  panelX = Math.max(0, Math.min(panelX, canvas.width - W));
+
+  // Vertical: align to top of tower, clamped to canvas
+  let panelY = tower.row * TILE;
+  panelY = Math.max(0, Math.min(panelY, canvas.height - H));
+
+  // Background + border
+  ctx.fillStyle   = '#1C1814';
+  ctx.fillRect(panelX, panelY, W, H);
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(panelX, panelY, W, H);
+
+  const tx = panelX + pad;
+  let   ty = panelY + pad;
+
+  // Tower name
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = 'bold 12px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(name, tx, ty + 10);
+  ty += lineH + 2;
+
+  // Stats
+  ctx.font      = '10px monospace';
+  ctx.fillStyle = COLORS.ash;
+  ctx.fillText(`Dmg:   ${Math.round(tower.damage)}`,   tx, ty + 9); ty += lineH;
+  ctx.fillText(`Range: ${tower.range.toFixed(1)}`,     tx, ty + 9); ty += lineH;
+  ctx.fillText(`Rate:  ${frLabel}`,                    tx, ty + 9); ty += lineH + 4;
+
+  // Amber divider
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth   = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(panelX + W - pad, ty);
+  ctx.stroke();
+  ty += 6;
+
+  // Cards section
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = 'bold 10px monospace';
+  ctx.fillText('Cards', tx, ty + 9);
+  ty += lineH;
+
+  if (cards.length === 0) {
+    ctx.font      = 'italic 9px monospace';
+    ctx.fillStyle = '#666666';
+    ctx.fillText('No cards applied yet', tx, ty + 8);
+    ty += lineH;
+  } else {
+    ctx.font = '10px monospace';
+    for (const card of cards) {
+      ctx.fillStyle = RARITY_BORDER[card.rarity];
+      ctx.fillText(card.name, tx, ty + 8);
+      ty += lineH;
+    }
+  }
+
+  // Synergies section (only if any active)
+  if (syns.length > 0) {
+    ty += 4;
+    ctx.fillStyle = COLORS.ash;
+    ctx.font      = 'bold 10px monospace';
+    ctx.fillText('Synergies', tx, ty + 9);
+    ty += lineH;
+    ctx.font = '10px monospace';
+    for (const key of syns) {
+      ctx.fillStyle = '#D4A847';
+      ctx.fillText('\u2605 ' + SYNERGY_DISPLAY[key], tx, ty + 8);
+      ty += lineH;
     }
   }
 }
@@ -1637,6 +1756,7 @@ function restartGame() {
   selectedTower   = null;
   selectedCard    = null;
   cardOfferActive = false;
+  placingMode     = 'select';
   bossAnnounceTimer      = 0;
   bossAnnounceData       = null;
   bossDefeatedTimer      = 0;
@@ -1710,6 +1830,7 @@ function draw() {
   drawBossDefeated();
   if (bossAnnounceTimer > 0) drawBossAnnounce();
   if (cardOfferActive || selectedCard !== null) drawCardOffer();
+  if (selectedTower && !cardOfferActive && selectedCard === null) drawTowerInfoPanel(selectedTower);
 }
 
 // ─── GAME LOOP ───
