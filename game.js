@@ -971,19 +971,28 @@ function handleTileClick(pixelX, pixelY) {
 
   const existing = TOWERS.find(t => t.col === col && t.row === row);
   if (existing) {
+    // Occupied tile — cancel placement mode, show info panel for that tower
     selectedTower = existing;
+    if (placingMode !== 'select') { placingMode = 'select'; updateTowerBtnStyles(); }
     return;
   }
 
-  if (PATH_TILES.has(`${col},${row}`)) { selectedTower = null; return; }
+  if (PATH_TILES.has(`${col},${row}`)) {
+    // Path tile — cancel placement mode
+    selectedTower = null;
+    if (placingMode !== 'select') { placingMode = 'select'; updateTowerBtnStyles(); }
+    return;
+  }
 
-  // In select mode — empty / path tap already dismissed above
+  // In select mode — empty tile tap dismisses panel
   if (placingMode === 'select') { selectedTower = null; return; }
 
   const typeDef = TOWER_TYPES[placingMode];
   if (gold < typeDef.cost) {
     notEnoughGoldTimer = 120;
     selectedTower = null;
+    placingMode = 'select';
+    updateTowerBtnStyles();
     return;
   }
 
@@ -1007,6 +1016,8 @@ function handleTileClick(pixelX, pixelY) {
     timer:     0,
   });
   selectedTower = TOWERS[TOWERS.length - 1];
+  placingMode = 'select';
+  updateTowerBtnStyles();
 }
 
 function handleCanvasInput(pixelX, pixelY) {
