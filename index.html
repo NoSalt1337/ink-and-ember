@@ -15,7 +15,18 @@
         <h2 class="worldmap-subtitle">The Verdant Pass</h2>
         <div id="level-list" class="level-list"></div>
       </div>
+      <button id="resetGameBtn" class="reset-game-btn">Reset Game</button>
     </div>
+
+    <!-- ── Reset Confirmation Overlay ── -->
+    <div id="reset-overlay" class="reset-overlay" style="display:none;">
+      <div id="reset-panel" class="reset-panel">
+        <!-- content injected by JS -->
+      </div>
+    </div>
+
+    <!-- ── Reset Toast ── -->
+    <div id="reset-toast" class="reset-toast" style="display:none;">Game reset.</div>
 
     <!-- ── Game Screen ── -->
     <div id="screen-game">
@@ -39,6 +50,9 @@
 
     <!-- ── Game Over Screen (placeholder) ── -->
     <div id="screen-gameover"></div>
+
+    <!-- ── Collection Screen ── -->
+    <div id="screen-collection"></div>
 
     <script src="game.js"></script>
   </body>

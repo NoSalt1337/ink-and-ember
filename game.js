@@ -162,6 +162,54 @@ const VICTORY_BTN      = { w: 160, h: 36 };
 const CONFIRM_YES_BTN  = { w: 80,  h: 32 };
 const CONFIRM_NO_BTN   = { w: 80,  h: 32 };
 
+// ─── META PROGRESSION ───
+const SAVE_KEY = 'inkember_save';
+let unlockedCards = ['dmg_boost', 'range_boost', 'speed_boost'];
+let perfectRun    = true;
+const towerTypesUsed = new Set();
+let unlockNotificationQueue = [];
+let unlockNotificationTimer  = 0;
+
+const lifetimeStats = {
+  totalKills:     0,
+  totalWaves:     0,
+  totalRuns:      0,
+  totalBossKills: 0,
+  highestWave:    0,
+};
+
+const LEVEL_CARD_REWARDS = {
+  '1': ['dmg_boost_2'],
+  '2': ['range_boost_2'],
+  '3': ['speed_boost_2'],
+  '4': ['evolve_ballista'],
+};
+
+const LEVEL_ALL_REWARDS = {
+  '1': ['dmg_boost_2'],
+  '2': ['range_boost_2'],
+  '3': ['speed_boost_2', 'armor_pierce'],
+  '4': ['evolve_ballista', 'fortress'],
+};
+
+const CARD_UNLOCK_HINTS = {
+  dmg_boost_2:     'Beat Level 1',
+  range_boost_2:   'Beat Level 2',
+  speed_boost_2:   'Beat Level 3',
+  armor_pierce:    'Beat Level 3 using only 2 tower types',
+  evolve_ballista: 'Beat Level 4',
+  fortress:        'Beat Level 4 without losing a life',
+  poison:          'Clear 5 waves (lifetime)',
+  slow:            'Clear 10 waves (lifetime)',
+  chain:           'Clear 20 waves (lifetime)',
+  bounce:          'Clear 30 waves (lifetime)',
+  multishot:       'Kill 50 enemies (lifetime)',
+  vampiric:        'Kill 150 enemies (lifetime)',
+  overcharge:      'Kill 300 enemies (lifetime)',
+  warlord:         'Defeat your first boss',
+  berserker:       'Defeat 5 bosses (lifetime)',
+};
+
 // ─── MAP / PATH (set by loadLevel, initialised to Level 1) ───
 let MAP  = LEVELS['1'].map;
 let PATH = LEVELS['1'].path;
@@ -177,6 +225,27 @@ function rebuildPathTiles() {
   }
 }
 rebuildPathTiles();
+
+// ─── SAVE / LOAD ───
+function saveGame() {
+  const data = { PROGRESS, unlockedCards, lifetimeStats };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.PROGRESS) {
+      for (const key of Object.keys(PROGRESS)) {
+        if (data.PROGRESS[key]) PROGRESS[key].beaten = !!data.PROGRESS[key].beaten;
+      }
+    }
+    if (Array.isArray(data.unlockedCards)) unlockedCards = data.unlockedCards;
+    if (data.lifetimeStats) Object.assign(lifetimeStats, data.lifetimeStats);
+  } catch (e) { /* corrupt save — ignore */ }
+}
 
 // ─── TOWER DATA ───
 const TOWERS = [];
@@ -485,33 +554,37 @@ function drawCard(card, x, y, w, h, highlighted) {
   ctx.textAlign = 'left';
 }
 
-function drawOneCard(usedIds) {
-  const roll = Math.random();
-  let rarity;
-  if (roll < 0.6)      rarity = 'common';
-  else if (roll < 0.9) rarity = 'rare';
-  else                 rarity = 'legendary';
-
-  // No legendaries before wave 3
-  if (rarity === 'legendary' && waveNum < 3) rarity = 'rare';
-
-  let pool = CARD_POOL.filter(c => c.rarity === rarity && !usedIds.has(c.id));
-  // Fallback: if pool exhausted (unlikely) use any unused card
-  if (pool.length === 0) pool = CARD_POOL.filter(c => !usedIds.has(c.id));
-  if (pool.length === 0) pool = CARD_POOL; // absolute fallback
-
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
 function offerCards() {
   selectedTower = null; // dismiss any open info panel
+
+  // Build the eligible pool — only cards the player has unlocked
+  const available = CARD_POOL.filter(c => unlockedCards.includes(c.id));
+  console.log('[offerCards] unlockedCards:', unlockedCards.slice());
+
   offeredCards = [];
   const usedIds = new Set();
+
   for (let i = 0; i < 3; i++) {
-    const card = drawOneCard(usedIds);
+    // Roll rarity, then find candidates from the unlocked pool
+    const roll = Math.random();
+    let rarity;
+    if (roll < 0.6)      rarity = 'common';
+    else if (roll < 0.9) rarity = 'rare';
+    else                 rarity = 'legendary';
+    if (rarity === 'legendary' && waveNum < 3) rarity = 'rare';
+
+    // When available pool is too small to fill 3 unique slots, allow duplicates
+    const canAvoidDupe = available.length > usedIds.size;
+
+    let pool = available.filter(c => c.rarity === rarity && (canAvoidDupe ? !usedIds.has(c.id) : true));
+    if (pool.length === 0) pool = available.filter(c => canAvoidDupe ? !usedIds.has(c.id) : true);
+    if (pool.length === 0) pool = available; // all unlocked cards, duplicates allowed
+
+    const card = pool[Math.floor(Math.random() * pool.length)];
     offeredCards.push(card);
     usedIds.add(card.id);
   }
+
   cardOfferActive = true;
   selectedCard    = null;
   document.getElementById('rerollBtn').style.display = 'block';
@@ -714,12 +787,14 @@ function updateSpawnQueue() {
 function killEnemy(enemy, sourceBullet) {
   enemy.hp   = 0;
   enemy.done = true;
+  lifetimeStats.totalKills++;
   if (enemy.isBoss) {
     gold  += enemy.reward;
     score += 100;
     spawnParticles(enemy.x, enemy.y, 20);
     bossDefeatedTimer = 120;
     pendingBossReward = true;
+    lifetimeStats.totalBossKills++;
   } else {
     gold  += enemy.reward || 15;
     score += 10;
@@ -727,6 +802,7 @@ function killEnemy(enemy, sourceBullet) {
   }
   // Vampiric bonus
   if (sourceBullet && sourceBullet.vampiric) gold += 1;
+  checkKillMilestones();
 }
 
 function updateEnemies() {
@@ -769,7 +845,9 @@ function updateEnemies() {
     const next = PATH[enemy.pathIdx + 1];
     if (!next) {
       const fortressCount = TOWERS.filter(t => t.fortress).length;
-      lives = Math.max(0, lives - Math.max(0, 1 - fortressCount));
+      const livesLost = Math.max(0, 1 - fortressCount);
+      if (livesLost > 0) perfectRun = false;
+      lives = Math.max(0, lives - livesLost);
       enemy.done = true;
       continue;
     }
@@ -1133,6 +1211,7 @@ function handleTileClick(pixelX, pixelY) {
     angle:     0,
     timer:     0,
   });
+  towerTypesUsed.add(placingMode);
   selectedTower = TOWERS[TOWERS.length - 1];
   placingMode = 'select';
   updateTowerBtnStyles();
@@ -1160,7 +1239,6 @@ function handleCanvasInput(pixelX, pixelY) {
     if (VICTORY_BTN.x !== undefined &&
         pixelX >= VICTORY_BTN.x && pixelX <= VICTORY_BTN.x + VICTORY_BTN.w &&
         pixelY >= VICTORY_BTN.y && pixelY <= VICTORY_BTN.y + VICTORY_BTN.h) {
-      PROGRESS[currentLevel].beaten = true;
       showScreen('worldmap');
     }
     return;
@@ -1967,6 +2045,7 @@ function draw() {
   if (selectedTower && !cardOfferActive && selectedCard === null) drawTowerInfoPanel(selectedTower);
   if (levelVictory)    drawVictory();
   if (backConfirmActive) drawBackConfirm();
+  drawUnlockNotification();
 }
 
 // ─── GAME LOOP ───
@@ -1990,6 +2069,8 @@ function gameLoop() {
     if (bossDefeatedTimer === 0 && pendingBossReward) {
       pendingBossReward = false;
       waveRewardGiven   = true; // prevent normal wave-end offer from also firing
+      lifetimeStats.totalWaves++;
+      checkWaveMilestones();
       offerCards();
     }
   }
@@ -2004,12 +2085,18 @@ function gameLoop() {
     // Check for level victory
     if (currentLevel && waveNum >= LEVELS[currentLevel].waveCount
         && !spawning && spawnQueue.length === 0 && ENEMIES.length === 0) {
+      lifetimeStats.totalWaves++;
+      checkWaveMilestones();
+      PROGRESS[currentLevel].beaten = true;
+      checkLevelMilestones();
       levelVictory = true;
     }
     // Trigger card offer when wave is cleared (but level not yet complete)
     else if (waveNum > 0 && !spawning && spawnQueue.length === 0 && ENEMIES.length === 0
         && !cardOfferActive && !waveRewardGiven) {
       waveRewardGiven = true;
+      lifetimeStats.totalWaves++;
+      checkWaveMilestones();
       offerCards();
     }
   }
@@ -2129,6 +2216,8 @@ function loadLevel(levelKey) {
   levelSpeedMultiplier = currentLevel === '2' ? 1.2 : 1.0;
   levelBossFrequency   = currentLevel === '4' ? 2   : 5;
 
+  perfectRun = true;
+  towerTypesUsed.clear();
   lives             = 20;
   gold              = level.startingGold;
   score             = 0;
@@ -2162,8 +2251,129 @@ function loadLevel(levelKey) {
   updateTowerBtnStyles();
 }
 
+// ─── MILESTONE CHECKS ───
+function unlockCard(cardId) {
+  if (unlockedCards.includes(cardId)) return;
+  unlockedCards.push(cardId);
+  unlockNotificationQueue.push(cardId);
+  saveGame();
+}
+
+function checkKillMilestones() {
+  if (lifetimeStats.totalKills     >= 50)  unlockCard('multishot');
+  if (lifetimeStats.totalKills     >= 150) unlockCard('vampiric');
+  if (lifetimeStats.totalKills     >= 300) unlockCard('overcharge');
+  if (lifetimeStats.totalBossKills >= 1)   unlockCard('warlord');
+  if (lifetimeStats.totalBossKills >= 5)   unlockCard('berserker');
+}
+
+function checkWaveMilestones() {
+  if (lifetimeStats.totalWaves >= 5)  unlockCard('poison');
+  if (lifetimeStats.totalWaves >= 10) unlockCard('slow');
+  if (lifetimeStats.totalWaves >= 20) unlockCard('chain');
+  if (lifetimeStats.totalWaves >= 30) unlockCard('bounce');
+}
+
+function checkLevelMilestones() {
+  const key = currentLevel;
+  for (const cardId of (LEVEL_CARD_REWARDS[key] || [])) unlockCard(cardId);
+  if (key === '3' && towerTypesUsed.size <= 2) unlockCard('armor_pierce');
+  if (key === '4' && perfectRun)               unlockCard('fortress');
+  lifetimeStats.totalRuns++;
+  if (waveNum > lifetimeStats.highestWave) lifetimeStats.highestWave = waveNum;
+  saveGame();
+}
+
+// ─── UNLOCK NOTIFICATION OVERLAY ───
+function drawUnlockNotification() {
+  if (unlockNotificationQueue.length === 0) return;
+  if (unlockNotificationTimer <= 0) unlockNotificationTimer = 180;
+
+  const cardId = unlockNotificationQueue[0];
+  const card   = CARD_POOL.find(c => c.id === cardId);
+
+  const t     = unlockNotificationTimer;
+  const alpha = t > 150 ? (180 - t) / 30 : t < 30 ? t / 30 : 1;
+
+  unlockNotificationTimer--;
+  if (unlockNotificationTimer <= 0) {
+    unlockNotificationQueue.shift();
+    unlockNotificationTimer = 0;
+  }
+
+  if (!card) return;
+
+  const cx = canvas.width / 2;
+  const w  = 280, h = 50;
+  const x  = cx - w / 2, y = 12;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle   = 'rgba(20,15,10,0.95)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = RARITY_BORDER[card.rarity];
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.textAlign  = 'center';
+  ctx.fillStyle  = COLORS.gold;
+  ctx.font       = 'bold 10px monospace';
+  ctx.fillText('NEW CARD UNLOCKED', cx, y + 16);
+  ctx.fillStyle  = RARITY_BORDER[card.rarity];
+  ctx.font       = 'bold 14px monospace';
+  ctx.fillText(card.name, cx, y + 36);
+  ctx.textAlign  = 'left';
+  ctx.restore();
+}
+
+// ─── COLLECTION SCREEN ───
+function renderCollection() {
+  const screen = document.getElementById('screen-collection');
+  const rarityColor = { common: '#aaaaaa', rare: '#6A9FB5', legendary: '#D4A847' };
+
+  let html = '<div class="collection-inner">';
+  html += '<button id="collBackBtn" class="coll-back-btn">← Back</button>';
+  html += '<h1 class="collection-title">Card Collection</h1>';
+  html += `<p class="coll-count">${unlockedCards.length} / ${CARD_POOL.length} unlocked</p>`;
+
+  for (const rarity of ['common', 'rare', 'legendary']) {
+    const cards = CARD_POOL.filter(c => c.rarity === rarity);
+    html += `<div class="coll-rarity-group">`;
+    html += `<div class="coll-rarity-label" style="color:${rarityColor[rarity]}">${rarity.toUpperCase()}</div>`;
+    html += `<div class="coll-cards-grid">`;
+    for (const card of cards) {
+      if (unlockedCards.includes(card.id)) {
+        html += `<div class="coll-card coll-card-unlocked" style="border-color:${rarityColor[rarity]}">`;
+        html += `<div class="coll-card-name" style="color:${rarityColor[rarity]}">${card.name}</div>`;
+        html += `<div class="coll-card-desc">${card.description}</div>`;
+      } else {
+        const hint = CARD_UNLOCK_HINTS[card.id] || '???';
+        html += `<div class="coll-card coll-card-locked">`;
+        html += `<div class="coll-card-name coll-card-mystery">???</div>`;
+        html += `<div class="coll-card-hint">${hint}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+  }
+  html += '</div>';
+  screen.innerHTML = html;
+  document.getElementById('collBackBtn').addEventListener('click', () => showScreen('worldmap'));
+}
+
 // ─── WORLD MAP ───
 function renderWorldMap() {
+  // Collection button
+  let collBtn = document.getElementById('worldmap-coll-btn');
+  if (!collBtn) {
+    collBtn = document.createElement('button');
+    collBtn.id        = 'worldmap-coll-btn';
+    collBtn.className = 'play-btn worldmap-coll-btn';
+    collBtn.textContent = '\u{1F4D6} Collection';
+    collBtn.addEventListener('click', () => showScreen('collection'));
+    const inner = document.querySelector('.worldmap-inner');
+    inner.insertBefore(collBtn, document.getElementById('level-list'));
+  }
+
   const list = document.getElementById('level-list');
   list.innerHTML = '';
   for (let i = 1; i <= 4; i++) {
@@ -2176,7 +2386,7 @@ function renderWorldMap() {
     const node = document.createElement('div');
     node.className = 'level-node' + (isUnlocked ? '' : ' locked');
 
-    // Left: level number + name + constraint
+    // Left: level number + name + constraint + card badge
     const leftDiv = document.createElement('div');
     leftDiv.className = 'level-node-left';
 
@@ -2197,6 +2407,16 @@ function renderWorldMap() {
       leftDiv.appendChild(cEl);
     }
 
+    // Card badge
+    const allRewards  = LEVEL_ALL_REWARDS[key] || [];
+    if (allRewards.length > 0) {
+      const gotCount   = allRewards.filter(id => unlockedCards.includes(id)).length;
+      const badgeEl    = document.createElement('div');
+      badgeEl.className = 'level-card-badge' + (gotCount === allRewards.length ? ' badge-full' : '');
+      badgeEl.textContent = `\u25A0 ${gotCount}/${allRewards.length} cards`;
+      leftDiv.appendChild(badgeEl);
+    }
+
     node.appendChild(leftDiv);
 
     // Right: lock / checkmark / play button
@@ -2210,6 +2430,13 @@ function renderWorldMap() {
       check.className = 'level-checkmark';
       check.textContent = '\u2713';
       rightDiv.appendChild(check);
+      // Also add replay button
+      const replayBtn = document.createElement('button');
+      replayBtn.className = 'play-btn';
+      replayBtn.textContent = '\u21BA';
+      replayBtn.title = 'Play again';
+      replayBtn.addEventListener('click', () => { loadLevel(key); showScreen('game'); });
+      rightDiv.appendChild(replayBtn);
     } else {
       const btn = document.createElement('button');
       btn.className = 'play-btn';
@@ -2221,17 +2448,114 @@ function renderWorldMap() {
     node.appendChild(rightDiv);
     list.appendChild(node);
   }
+
+  // Lifetime stats panel
+  let statsEl = document.getElementById('lifetime-stats');
+  if (!statsEl) {
+    statsEl = document.createElement('div');
+    statsEl.id = 'lifetime-stats';
+    document.querySelector('.worldmap-inner').appendChild(statsEl);
+  }
+  statsEl.innerHTML = `
+    <div class="stats-title">Lifetime Stats</div>
+    <div class="stats-grid">
+      <span class="stats-label">Kills</span><span class="stats-value">${lifetimeStats.totalKills}</span>
+      <span class="stats-label">Waves</span><span class="stats-value">${lifetimeStats.totalWaves}</span>
+      <span class="stats-label">Runs</span><span class="stats-value">${lifetimeStats.totalRuns}</span>
+      <span class="stats-label">Bosses</span><span class="stats-value">${lifetimeStats.totalBossKills}</span>
+      <span class="stats-label">Best wave</span><span class="stats-value">${lifetimeStats.highestWave}</span>
+    </div>
+  `;
 }
 
 function showScreen(name) {
-  ['screen-worldmap', 'screen-game', 'screen-gameover'].forEach(id => {
+  ['screen-worldmap', 'screen-game', 'screen-gameover', 'screen-collection'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
   document.getElementById('screen-' + name).style.display = 'flex';
-  if (name === 'worldmap') renderWorldMap();
+  if (name === 'worldmap')    renderWorldMap();
+  if (name === 'collection')  renderCollection();
 }
 
+// ─── RESET GAME ───
+function showResetOverlay() {
+  const overlay = document.getElementById('reset-overlay');
+  const panel   = document.getElementById('reset-panel');
+  overlay.style.display = 'flex';
+  renderResetStep1(panel);
+}
+
+function hideResetOverlay() {
+  document.getElementById('reset-overlay').style.display = 'none';
+}
+
+function renderResetStep1(panel) {
+  panel.innerHTML = `
+    <div class="reset-panel-title">Reset All Progress?</div>
+    <div class="reset-panel-desc">This will erase all level progress, unlocked cards and lifetime stats. This cannot be undone.</div>
+    <div class="reset-panel-btns">
+      <button class="reset-cancel-btn" id="resetCancel1">Cancel</button>
+      <button class="reset-confirm-btn" id="resetNext">Yes, Reset</button>
+    </div>
+  `;
+  document.getElementById('resetCancel1').addEventListener('click', hideResetOverlay);
+  document.getElementById('resetNext').addEventListener('click', () => renderResetStep2(panel));
+}
+
+function renderResetStep2(panel) {
+  panel.innerHTML = `
+    <div class="reset-panel-title large">Are you absolutely sure?</div>
+    <div class="reset-panel-desc">All unlocked cards and level progress will be permanently deleted.</div>
+    <input id="resetTypeInput" class="reset-type-input" type="text" placeholder='Type "RESET" to confirm' maxlength="5" autocomplete="off" spellcheck="false" />
+    <div class="reset-panel-btns">
+      <button class="reset-cancel-btn" id="resetCancel2">Cancel</button>
+      <button class="reset-confirm-btn" id="resetDelete" disabled>Delete Everything</button>
+    </div>
+  `;
+  document.getElementById('resetCancel2').addEventListener('click', hideResetOverlay);
+  document.getElementById('resetTypeInput').addEventListener('input', e => {
+    document.getElementById('resetDelete').disabled = e.target.value !== 'RESET';
+  });
+  document.getElementById('resetDelete').addEventListener('click', executeReset);
+}
+
+function executeReset() {
+  // Wipe save
+  localStorage.removeItem(SAVE_KEY);
+
+  // Reset PROGRESS
+  for (const key of Object.keys(PROGRESS)) PROGRESS[key].beaten = false;
+
+  // Reset unlocked cards to starters only
+  unlockedCards.length = 0;
+  unlockedCards.push('dmg_boost', 'range_boost', 'speed_boost');
+
+  // Reset lifetime stats
+  lifetimeStats.totalKills     = 0;
+  lifetimeStats.totalWaves     = 0;
+  lifetimeStats.totalRuns      = 0;
+  lifetimeStats.totalBossKills = 0;
+  lifetimeStats.highestWave    = 0;
+
+  hideResetOverlay();
+  renderWorldMap();
+  showResetToast();
+}
+
+function showResetToast() {
+  const toast = document.getElementById('reset-toast');
+  toast.style.opacity  = '1';
+  toast.style.display  = 'block';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => { toast.style.display = 'none'; }, 400);
+  }, 2000);
+}
+
+document.getElementById('resetGameBtn').addEventListener('click', showResetOverlay);
+
 // ─── INIT ───
+loadGame();
 updateTowerBtnStyles();
 showScreen('worldmap');
 gameLoop();

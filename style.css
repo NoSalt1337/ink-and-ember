@@ -12,7 +12,8 @@ body {
 /* ─── Screen management ─── */
 #screen-worldmap,
 #screen-game,
-#screen-gameover {
+#screen-gameover,
+#screen-collection {
   display: none;
   width: 100vw;
   height: 100vh;
@@ -261,4 +262,319 @@ canvas {
 
 #rerollBtn:hover {
   background-color: #251d0f;
+}
+
+/* ─── Level card badges ─── */
+.level-card-badge {
+  font-family: monospace;
+  font-size: 10px;
+  color: #666;
+  margin-top: 3px;
+  letter-spacing: 0.05em;
+}
+
+.level-card-badge.badge-full {
+  color: #D4A847;
+}
+
+/* ─── World map collection button ─── */
+.worldmap-coll-btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ─── Lifetime stats panel ─── */
+#lifetime-stats {
+  margin-top: 24px;
+  padding: 14px 16px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background-color: #141210;
+}
+
+.stats-title {
+  font-family: monospace;
+  font-size: 11px;
+  color: #C87941;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.stats-label {
+  font-family: monospace;
+  font-size: 11px;
+  color: #666;
+}
+
+.stats-value {
+  font-family: monospace;
+  font-size: 11px;
+  color: #E8DDD0;
+  text-align: right;
+}
+
+/* ─── Collection Screen ─── */
+#screen-collection {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  background-color: #0E0B08;
+  overflow-y: auto;
+}
+
+.collection-inner {
+  padding: 28px 20px 40px;
+  max-width: 520px;
+  width: 100%;
+}
+
+.coll-back-btn {
+  padding: 6px 14px;
+  background-color: #1C1410;
+  color: #888;
+  border: 1px solid #444;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  border-radius: 2px;
+  margin-bottom: 16px;
+}
+
+.coll-back-btn:hover {
+  color: #E8DDD0;
+}
+
+.collection-title {
+  font-family: monospace;
+  font-size: 22px;
+  color: #D4A847;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.coll-count {
+  font-family: monospace;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 20px;
+}
+
+.coll-rarity-group {
+  margin-bottom: 20px;
+}
+
+.coll-rarity-label {
+  font-family: monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  margin-bottom: 8px;
+}
+
+.coll-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.coll-card {
+  padding: 10px 10px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-color: #141210;
+  min-height: 64px;
+}
+
+.coll-card-unlocked {
+  border-width: 1px;
+  border-style: solid;
+}
+
+.coll-card-locked {
+  border-color: #2a2520;
+  opacity: 0.7;
+}
+
+.coll-card-name {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.coll-card-mystery {
+  color: #444;
+}
+
+.coll-card-desc {
+  font-family: monospace;
+  font-size: 10px;
+  color: #888;
+  line-height: 1.4;
+}
+
+.coll-card-hint {
+  font-family: monospace;
+  font-size: 10px;
+  color: #555;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* ─── Reset Game button ─── */
+.reset-game-btn {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  background-color: transparent;
+  color: #555;
+  border: 1px solid #8B1A1A;
+  font-family: monospace;
+  font-size: 11px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.reset-game-btn:hover {
+  color: #aaa;
+  border-color: #b52020;
+}
+
+/* ─── Reset confirmation overlay ─── */
+.reset-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(14, 11, 8, 0.90);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reset-panel {
+  background-color: #1C1814;
+  border: 2px solid #8B1A1A;
+  border-radius: 4px;
+  padding: 28px 28px 22px;
+  max-width: 360px;
+  width: 90%;
+  text-align: center;
+}
+
+.reset-panel-title {
+  font-family: monospace;
+  font-size: 18px;
+  color: #8B1A1A;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+}
+
+.reset-panel-title.large {
+  font-size: 20px;
+}
+
+.reset-panel-desc {
+  font-family: monospace;
+  font-size: 12px;
+  color: #E8DDD0;
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+
+.reset-panel-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.reset-cancel-btn {
+  padding: 7px 18px;
+  background-color: #1C1410;
+  color: #E8DDD0;
+  border: 1px solid #C87941;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  border-radius: 2px;
+}
+
+.reset-cancel-btn:hover {
+  background-color: #2a1e14;
+}
+
+.reset-confirm-btn {
+  padding: 7px 18px;
+  background-color: transparent;
+  color: #8B1A1A;
+  border: 1px solid #8B1A1A;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  border-radius: 2px;
+}
+
+.reset-confirm-btn:hover:not(:disabled) {
+  background-color: #8B1A1A;
+  color: #E8DDD0;
+}
+
+.reset-confirm-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.reset-type-input {
+  display: block;
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 8px 10px;
+  background-color: #0E0B08;
+  color: #E8DDD0;
+  border: 1px solid #C87941;
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  border-radius: 2px;
+  outline: none;
+}
+
+.reset-type-input::placeholder {
+  color: #444;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Reset toast ─── */
+.reset-toast {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: monospace;
+  font-size: 13px;
+  color: #E8DDD0;
+  background-color: rgba(14, 11, 8, 0.85);
+  padding: 8px 20px;
+  border: 1px solid #444;
+  border-radius: 2px;
+  z-index: 200;
+  pointer-events: none;
+  transition: opacity 0.4s;
 }
