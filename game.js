@@ -203,9 +203,9 @@ const CARD_UNLOCK_HINTS = {
   slow:            'Clear 10 waves (lifetime)',
   chain:           'Clear 20 waves (lifetime)',
   bounce:          'Clear 30 waves (lifetime)',
-  multishot:       'Kill 50 enemies (lifetime)',
+  multishot:       'Kill 300 enemies (lifetime)',
   vampiric:        'Kill 150 enemies (lifetime)',
-  overcharge:      'Kill 300 enemies (lifetime)',
+  overcharge:      'Kill 50 enemies (lifetime)',
   warlord:         'Defeat your first boss',
   berserker:       'Defeat 5 bosses (lifetime)',
 };
@@ -2260,9 +2260,9 @@ function unlockCard(cardId) {
 }
 
 function checkKillMilestones() {
-  if (lifetimeStats.totalKills     >= 50)  unlockCard('multishot');
+  if (lifetimeStats.totalKills     >= 50)  unlockCard('overcharge');
   if (lifetimeStats.totalKills     >= 150) unlockCard('vampiric');
-  if (lifetimeStats.totalKills     >= 300) unlockCard('overcharge');
+  if (lifetimeStats.totalKills     >= 300) unlockCard('multishot');
   if (lifetimeStats.totalBossKills >= 1)   unlockCard('warlord');
   if (lifetimeStats.totalBossKills >= 5)   unlockCard('berserker');
 }
