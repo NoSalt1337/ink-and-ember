@@ -312,6 +312,7 @@ const TOWER_TYPES = {
 let placingMode        = 'select'; // 'select' | 'archer' | 'cannon' | 'frost' | 'mage'
 let selectedTower      = null;
 let notEnoughGoldTimer = 0;
+let clearWaveTimer     = 0;
 
 // ─── ENEMY TYPES ───
 const ENEMY_TYPES = {
@@ -719,12 +720,20 @@ function spawnBossWave() {
 function spawnWave() {
   if (cardOfferActive || selectedCard !== null) return;
   if (currentLevel && waveNum >= LEVELS[currentLevel].waveCount) return;
+  // Prevent sending a new wave before the current one is cleared
+  if (spawning || ENEMIES.some(e => !e.done) || bossAnnounceTimer > 0 || betweenLevelActive) {
+    clearWaveTimer = 120;
+    return;
+  }
   waveRewardGiven = false;
   waveNum++;
   spawning   = true;
   spawnQueue = [];
 
-  if (waveNum % levelBossFrequency === 0) {
+  const isBossWave = waveNum % levelBossFrequency === 0;
+  console.log('[spawnWave] waveNum:', waveNum, '| levelBossFrequency:', levelBossFrequency, '| boss wave:', isBossWave);
+
+  if (isBossWave) {
     spawnBossWave();
   } else {
     const count   = Math.round((5 + waveNum * 4) * currentDifficulty.enemyCountMultiplier);
@@ -1317,6 +1326,24 @@ canvas.addEventListener('touchend', e => {
 });
 
 document.getElementById('sendWaveBtn').addEventListener('click', spawnWave);
+
+function canSendWave() {
+  return !spawning
+    && !ENEMIES.some(e => !e.done)
+    && bossAnnounceTimer <= 0
+    && !cardOfferActive
+    && selectedCard === null
+    && !betweenLevelActive
+    && !(currentLevel && waveNum >= LEVELS[currentLevel].waveCount);
+}
+
+function updateSendWaveBtn() {
+  const btn = document.getElementById('sendWaveBtn');
+  if (!btn) return;
+  const ok = canSendWave();
+  btn.style.borderColor = ok ? '#C87941' : '#444';
+  btn.style.opacity     = ok ? '1'       : '0.4';
+}
 
 
 ['archer','cannon','frost','mage'].forEach(type => {
@@ -1912,6 +1939,17 @@ function drawHUD() {
     ctx.globalAlpha = 1;
   }
 
+  // Clear the wave first message
+  if (clearWaveTimer > 0) {
+    ctx.fillStyle   = COLORS.crimson;
+    ctx.font        = 'bold 13px monospace';
+    ctx.textAlign   = 'center';
+    ctx.globalAlpha = Math.min(1, clearWaveTimer / 30);
+    ctx.fillText('Clear the current wave first!', canvas.width / 2, canvas.height - 34);
+    ctx.textAlign   = 'left';
+    ctx.globalAlpha = 1;
+  }
+
   // Synergy notification
   if (synergyTimer > 0) {
     const alpha = Math.min(1, synergyTimer / 40);
@@ -2140,6 +2178,8 @@ function gameLoop() {
   if (synergyTimer > 0)        synergyTimer--;
   if (cardFullTimer > 0)       cardFullTimer--;
   if (notEnoughGoldTimer > 0)  notEnoughGoldTimer--;
+  if (clearWaveTimer > 0)      clearWaveTimer--;
+  updateSendWaveBtn();
 
   // Boss defeated countdown — trigger bonus card offer when it expires
   if (bossDefeatedTimer > 0) {
@@ -2332,6 +2372,7 @@ function loadLevel(levelKey) {
   placingMode       = 'select';
   bossEscaped            = false;
   bossEscapedName        = '';
+  clearWaveTimer         = 0;
   bossAnnounceTimer      = 0;
   bossAnnounceData       = null;
   bossDefeatedTimer      = 0;
