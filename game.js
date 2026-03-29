@@ -24,42 +24,159 @@ const COLORS = {
   ash:         '#E8DDD0',
 };
 
-// ─── MAP DEFINITION ───
-// 0 = grass, 1 = path
-const MAP = [
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  [1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0],
-  [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
-  [0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
-  [0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
-  [0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-];
+// ─── LEVEL DEFINITIONS ───
+// 0 = grass, 1 = path, 2 = rocky (unbuildable)
+const LEVELS = {
+  '1': {
+    name: 'The Mossy Gate',
+    description: 'A gentle introduction to the Verdant Pass',
+    constraint: null,
+    unlockRequires: null,
+    waveCount: 8,
+    startingGold: 150,
+    map: [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    path: [
+      {col:0,row:2},{col:1,row:2},{col:2,row:2},{col:3,row:2},{col:4,row:2},{col:5,row:2},
+      {col:5,row:3},
+      {col:5,row:4},{col:6,row:4},{col:7,row:4},{col:8,row:4},{col:9,row:4},{col:10,row:4},
+      {col:10,row:5},
+      {col:10,row:6},{col:11,row:6},{col:12,row:6},{col:13,row:6},
+      {col:13,row:7},{col:13,row:8},
+      {col:13,row:9},{col:14,row:9},{col:15,row:9},
+    ],
+  },
+  '2': {
+    name: 'Thornwood Trail',
+    description: 'Enemies move 20% faster than normal',
+    constraint: 'Enemies move 20% faster',
+    unlockRequires: '1',
+    waveCount: 10,
+    startingGold: 150,
+    map: [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    path: [
+      {col:0,row:2},{col:1,row:2},{col:2,row:2},{col:3,row:2},
+      {col:3,row:3},{col:3,row:4},{col:4,row:4},{col:5,row:4},{col:6,row:4},{col:7,row:4},
+      {col:7,row:5},{col:7,row:6},{col:8,row:6},{col:9,row:6},{col:10,row:6},
+      {col:10,row:7},{col:10,row:8},{col:11,row:8},{col:12,row:8},{col:13,row:8},
+      {col:13,row:9},{col:13,row:10},{col:14,row:10},{col:15,row:10},
+    ],
+  },
+  '3': {
+    name: 'The Narrow Pass',
+    description: 'Very few tower placement spots — choose wisely',
+    constraint: 'Limited building space',
+    unlockRequires: '2',
+    waveCount: 12,
+    startingGold: 200,
+    map: [
+      [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+      [1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2],
+      [2,2,2,1,0,0,2,2,2,2,2,2,2,2,2,2],
+      [2,2,2,1,0,0,2,2,2,2,2,2,2,2,2,2],
+      [2,2,2,1,1,1,1,0,0,2,2,2,2,2,2,2],
+      [2,2,2,2,2,2,1,0,0,2,2,2,2,2,2,2],
+      [2,2,2,2,2,2,1,1,1,1,2,2,2,2,2,2],
+      [2,2,0,0,2,2,2,2,2,1,0,0,2,2,2,2],
+      [2,2,0,0,2,2,2,2,2,1,0,0,2,2,2,2],
+      [2,2,2,2,2,2,2,2,2,1,1,1,1,2,0,0],
+      [2,2,2,2,2,2,2,2,2,2,2,2,1,2,0,0],
+      [2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1],
+    ],
+    path: [
+      {col:0,row:1},{col:1,row:1},{col:2,row:1},{col:3,row:1},
+      {col:3,row:2},{col:3,row:3},{col:3,row:4},{col:4,row:4},{col:5,row:4},{col:6,row:4},
+      {col:6,row:5},{col:6,row:6},{col:7,row:6},{col:8,row:6},{col:9,row:6},
+      {col:9,row:7},{col:9,row:8},{col:9,row:9},{col:10,row:9},{col:11,row:9},{col:12,row:9},
+      {col:12,row:10},{col:12,row:11},{col:13,row:11},{col:14,row:11},{col:15,row:11},
+    ],
+  },
+  '4': {
+    name: 'Verdant Boss',
+    description: 'Boss waves every 2 rounds',
+    constraint: 'Boss waves every 2 rounds',
+    unlockRequires: '3',
+    waveCount: 6,
+    startingGold: 150,
+    map: [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0],
+      [0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],
+      [0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    path: [
+      {col:0,row:1},{col:1,row:1},{col:2,row:1},{col:3,row:1},{col:4,row:1},{col:5,row:1},
+      {col:6,row:1},{col:7,row:1},{col:8,row:1},{col:9,row:1},{col:10,row:1},{col:11,row:1},{col:12,row:1},
+      {col:12,row:2},
+      {col:12,row:3},{col:11,row:3},{col:10,row:3},{col:9,row:3},{col:8,row:3},{col:7,row:3},
+      {col:6,row:3},{col:5,row:3},{col:4,row:3},{col:3,row:3},
+      {col:3,row:4},{col:3,row:5},{col:4,row:5},{col:5,row:5},{col:6,row:5},{col:7,row:5},
+      {col:8,row:5},{col:9,row:5},
+      {col:9,row:6},{col:9,row:7},{col:10,row:7},{col:11,row:7},{col:12,row:7},
+      {col:13,row:7},{col:14,row:7},{col:15,row:7},
+    ],
+  },
+};
 
-// ─── PATH ARRAY (ordered route) ───
-const PATH = [
-  {col:0,row:2},{col:1,row:2},{col:2,row:2},{col:3,row:2},{col:4,row:2},{col:5,row:2},
-  {col:5,row:3},
-  {col:5,row:4},{col:6,row:4},{col:7,row:4},{col:8,row:4},{col:9,row:4},{col:10,row:4},
-  {col:10,row:5},
-  {col:10,row:6},{col:11,row:6},{col:12,row:6},{col:13,row:6},
-  {col:13,row:7},
-  {col:13,row:8},
-  {col:13,row:9},{col:14,row:9},{col:15,row:9},
-];
+// ─── PROGRESS & LEVEL STATE ───
+const PROGRESS = { '1': {beaten:false}, '2': {beaten:false}, '3': {beaten:false}, '4': {beaten:false} };
+let currentLevel          = null;
+let levelSpeedMultiplier  = 1.0;
+let levelBossFrequency    = 5;
+let levelVictory          = false;
+let backConfirmActive     = false;
+const VICTORY_BTN      = { w: 160, h: 36 };
+const CONFIRM_YES_BTN  = { w: 80,  h: 32 };
+const CONFIRM_NO_BTN   = { w: 80,  h: 32 };
+
+// ─── MAP / PATH (set by loadLevel, initialised to Level 1) ───
+let MAP  = LEVELS['1'].map;
+let PATH = LEVELS['1'].path;
 
 // ─── PATH TILE SET ───
 const PATH_TILES = new Set();
-for (let row = 0; row < ROWS; row++) {
-  for (let col = 0; col < COLS; col++) {
-    if (MAP[row][col] === 1) PATH_TILES.add(`${col},${row}`);
+function rebuildPathTiles() {
+  PATH_TILES.clear();
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (MAP[row][col] === 1) PATH_TILES.add(`${col},${row}`);
+    }
   }
 }
+rebuildPathTiles();
 
 // ─── TOWER DATA ───
 const TOWERS = [];
@@ -506,12 +623,13 @@ function spawnBossWave() {
 
 function spawnWave() {
   if (cardOfferActive || selectedCard !== null) return;
+  if (currentLevel && waveNum >= LEVELS[currentLevel].waveCount) return;
   waveRewardGiven = false;
   waveNum++;
   spawning   = true;
   spawnQueue = [];
 
-  if (waveNum % 5 === 0) {
+  if (waveNum % levelBossFrequency === 0) {
     spawnBossWave();
   } else {
     const count   = 5 + waveNum * 3;
@@ -575,7 +693,7 @@ function updateSpawnQueue() {
         pathIdx:         0,
         hp:              template.hp,
         maxHp:           template.hp,
-        speed:           (1.5 + waveNum * 0.05) * def.speedMult,
+        speed:           (1.5 + waveNum * 0.05) * def.speedMult * levelSpeedMultiplier,
         size:            def.size,
         color:           def.color,
         enemyType:       eType,
@@ -977,8 +1095,8 @@ function handleTileClick(pixelX, pixelY) {
     return;
   }
 
-  if (PATH_TILES.has(`${col},${row}`)) {
-    // Path tile — cancel placement mode
+  if (MAP[row][col] !== 0) {
+    // Path or rocky tile — cancel placement mode
     selectedTower = null;
     if (placingMode !== 'select') { placingMode = 'select'; updateTowerBtnStyles(); }
     return;
@@ -1021,6 +1139,33 @@ function handleTileClick(pixelX, pixelY) {
 }
 
 function handleCanvasInput(pixelX, pixelY) {
+  // Back-to-map confirmation overlay
+  if (backConfirmActive) {
+    if (CONFIRM_YES_BTN.x !== undefined &&
+        pixelX >= CONFIRM_YES_BTN.x && pixelX <= CONFIRM_YES_BTN.x + CONFIRM_YES_BTN.w &&
+        pixelY >= CONFIRM_YES_BTN.y && pixelY <= CONFIRM_YES_BTN.y + CONFIRM_YES_BTN.h) {
+      backConfirmActive = false;
+      loadLevel(currentLevel);
+      showScreen('worldmap');
+    } else if (CONFIRM_NO_BTN.x !== undefined &&
+        pixelX >= CONFIRM_NO_BTN.x && pixelX <= CONFIRM_NO_BTN.x + CONFIRM_NO_BTN.w &&
+        pixelY >= CONFIRM_NO_BTN.y && pixelY <= CONFIRM_NO_BTN.y + CONFIRM_NO_BTN.h) {
+      backConfirmActive = false;
+    }
+    return;
+  }
+
+  // Victory overlay
+  if (levelVictory) {
+    if (VICTORY_BTN.x !== undefined &&
+        pixelX >= VICTORY_BTN.x && pixelX <= VICTORY_BTN.x + VICTORY_BTN.w &&
+        pixelY >= VICTORY_BTN.y && pixelY <= VICTORY_BTN.y + VICTORY_BTN.h) {
+      PROGRESS[currentLevel].beaten = true;
+      showScreen('worldmap');
+    }
+    return;
+  }
+
   if (gameOver) {
     if (
       GAME_OVER_BTN.x !== undefined &&
@@ -1095,15 +1240,21 @@ document.getElementById('rerollBtn').addEventListener('click', () => {
   }
 });
 
+document.getElementById('backToMapBtn').addEventListener('click', () => {
+  backConfirmActive = true;
+});
+
 // ─── DRAW MAP ───
 function drawMap() {
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
-      const isPath = MAP[row][col] === 1;
+      const tile   = MAP[row][col];
       const isEven = (row + col) % 2 === 0;
 
-      if (isPath) {
+      if (tile === 1) {
         ctx.fillStyle = isEven ? COLORS.pathDark : COLORS.pathLight;
+      } else if (tile === 2) {
+        ctx.fillStyle = '#2A2018'; // rocky — unbuildable
       } else {
         ctx.fillStyle = isEven ? COLORS.grassDark : COLORS.grassLight;
       }
@@ -1756,35 +1907,7 @@ function drawBossDefeated() {
 const GAME_OVER_BTN = { w: 160, h: 36 }; // centered, y computed at draw time
 
 function restartGame() {
-  lives           = 20;
-  gold            = 150;
-  score           = 0;
-  waveNum         = 0;
-  spawning        = false;
-  spawnQueue      = [];
-  waveRewardGiven = false;
-  gameOver        = false;
-  selectedTower   = null;
-  selectedCard    = null;
-  cardOfferActive = false;
-  placingMode     = 'select';
-  bossAnnounceTimer      = 0;
-  bossAnnounceData       = null;
-  bossDefeatedTimer      = 0;
-  pendingBossReward      = false;
-  waveCompositionPreview = [];
-  TOWERS.length       = 0;
-  ENEMIES.length      = 0;
-  BULLETS.length      = 0;
-  PARTICLES.length    = 0;
-  CHAIN_LINES.length  = 0;
-  SPLASH_EFFECTS.length    = 0;
-  FROST_BURSTS.length      = 0;
-  MAGE_TRAILS.length       = 0;
-  DEBUG_SPLASH_RINGS.length = 0;
-  DEBUG_HIT_FLASHES.length  = 0;
-  document.getElementById('rerollBtn').style.display = 'none';
-  updateTowerBtnStyles();
+  loadLevel(currentLevel || '1');
 }
 
 function drawGameOver() {
@@ -1842,11 +1965,13 @@ function draw() {
   if (bossAnnounceTimer > 0) drawBossAnnounce();
   if (cardOfferActive || selectedCard !== null) drawCardOffer();
   if (selectedTower && !cardOfferActive && selectedCard === null) drawTowerInfoPanel(selectedTower);
+  if (levelVictory)    drawVictory();
+  if (backConfirmActive) drawBackConfirm();
 }
 
 // ─── GAME LOOP ───
 function gameLoop() {
-  if (lives <= 0 && !gameOver) gameOver = true;
+  if (lives <= 0 && !gameOver && !levelVictory) gameOver = true;
 
   if (gameOver) {
     draw();
@@ -1869,15 +1994,21 @@ function gameLoop() {
     }
   }
 
-  if (!cardOfferActive && selectedCard === null) {
+  if (!cardOfferActive && selectedCard === null && !levelVictory && !backConfirmActive) {
     updateSpawnQueue();
     updateEnemies();
     updateTowers();
     updateBullets();
     updateParticles();
 
-    // Trigger card offer when wave is fully cleared
-    if (waveNum > 0 && !spawning && spawnQueue.length === 0 && ENEMIES.length === 0 && !cardOfferActive && !waveRewardGiven) {
+    // Check for level victory
+    if (currentLevel && waveNum >= LEVELS[currentLevel].waveCount
+        && !spawning && spawnQueue.length === 0 && ENEMIES.length === 0) {
+      levelVictory = true;
+    }
+    // Trigger card offer when wave is cleared (but level not yet complete)
+    else if (waveNum > 0 && !spawning && spawnQueue.length === 0 && ENEMIES.length === 0
+        && !cardOfferActive && !waveRewardGiven) {
       waveRewardGiven = true;
       offerCards();
     }
@@ -1887,5 +2018,220 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
+// ─── VICTORY OVERLAY ───
+function drawVictory() {
+  const level  = LEVELS[currentLevel];
+  const cx     = canvas.width / 2;
+  const cy     = canvas.height / 2;
+  const panelW = 340, panelH = 220;
+  const panelX = cx - panelW / 2, panelY = cy - panelH / 2;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#1C1814';
+  ctx.fillRect(panelX, panelY, panelW, panelH);
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+  ctx.fillStyle = COLORS.gold;
+  ctx.font      = 'bold 26px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Level Complete!', cx, panelY + 52);
+
+  ctx.fillStyle = COLORS.amber;
+  ctx.font      = 'bold 15px monospace';
+  ctx.fillText(level.name, cx, panelY + 80);
+
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = '12px monospace';
+  ctx.fillText(`Score: ${score}`, cx, panelY + 112);
+  ctx.fillText(`Waves: ${waveNum}`, cx, panelY + 132);
+
+  // Continue button
+  const btnX = cx - VICTORY_BTN.w / 2;
+  const btnY = panelY + panelH - 54;
+  VICTORY_BTN.x = btnX;
+  VICTORY_BTN.y = btnY;
+  ctx.fillStyle   = '#1C1410';
+  ctx.fillRect(btnX, btnY, VICTORY_BTN.w, VICTORY_BTN.h);
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(btnX, btnY, VICTORY_BTN.w, VICTORY_BTN.h);
+  ctx.fillStyle = COLORS.gold;
+  ctx.font      = 'bold 14px monospace';
+  ctx.fillText('Continue', cx, btnY + 23);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── BACK CONFIRM OVERLAY ───
+function drawBackConfirm() {
+  const cx     = canvas.width / 2;
+  const cy     = canvas.height / 2;
+  const panelW = 300, panelH = 128;
+  const panelX = cx - panelW / 2, panelY = cy - panelH / 2;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#1C1814';
+  ctx.fillRect(panelX, panelY, panelW, panelH);
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Return to map?', cx, panelY + 36);
+  ctx.fillStyle = '#888';
+  ctx.font      = '11px monospace';
+  ctx.fillText('Progress will be lost', cx, panelY + 56);
+
+  // Yes
+  const yesX = cx - 92, yesY = panelY + panelH - 48;
+  CONFIRM_YES_BTN.x = yesX; CONFIRM_YES_BTN.y = yesY;
+  ctx.fillStyle   = '#1C1410';
+  ctx.fillRect(yesX, yesY, CONFIRM_YES_BTN.w, CONFIRM_YES_BTN.h);
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(yesX, yesY, CONFIRM_YES_BTN.w, CONFIRM_YES_BTN.h);
+  ctx.fillStyle = COLORS.amber;
+  ctx.font      = 'bold 12px monospace';
+  ctx.fillText('Yes', yesX + CONFIRM_YES_BTN.w / 2, yesY + 21);
+
+  // No
+  const noX = cx + 12, noY = yesY;
+  CONFIRM_NO_BTN.x = noX; CONFIRM_NO_BTN.y = noY;
+  ctx.fillStyle   = '#1C1410';
+  ctx.fillRect(noX, noY, CONFIRM_NO_BTN.w, CONFIRM_NO_BTN.h);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(noX, noY, CONFIRM_NO_BTN.w, CONFIRM_NO_BTN.h);
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = 'bold 12px monospace';
+  ctx.fillText('No', noX + CONFIRM_NO_BTN.w / 2, noY + 21);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── LOAD LEVEL ───
+function loadLevel(levelKey) {
+  const level = LEVELS[String(levelKey)];
+  currentLevel = String(levelKey);
+
+  MAP  = level.map;
+  PATH = level.path;
+  rebuildPathTiles();
+
+  levelSpeedMultiplier = currentLevel === '2' ? 1.2 : 1.0;
+  levelBossFrequency   = currentLevel === '4' ? 2   : 5;
+
+  lives             = 20;
+  gold              = level.startingGold;
+  score             = 0;
+  waveNum           = 0;
+  spawning          = false;
+  spawnQueue        = [];
+  waveRewardGiven   = false;
+  gameOver          = false;
+  levelVictory      = false;
+  backConfirmActive = false;
+  selectedTower     = null;
+  selectedCard      = null;
+  cardOfferActive   = false;
+  placingMode       = 'select';
+  bossAnnounceTimer      = 0;
+  bossAnnounceData       = null;
+  bossDefeatedTimer      = 0;
+  pendingBossReward      = false;
+  waveCompositionPreview = [];
+  TOWERS.length          = 0;
+  ENEMIES.length         = 0;
+  BULLETS.length         = 0;
+  PARTICLES.length       = 0;
+  CHAIN_LINES.length     = 0;
+  SPLASH_EFFECTS.length  = 0;
+  FROST_BURSTS.length    = 0;
+  MAGE_TRAILS.length     = 0;
+  DEBUG_SPLASH_RINGS.length = 0;
+  DEBUG_HIT_FLASHES.length  = 0;
+  document.getElementById('rerollBtn').style.display = 'none';
+  updateTowerBtnStyles();
+}
+
+// ─── WORLD MAP ───
+function renderWorldMap() {
+  const list = document.getElementById('level-list');
+  list.innerHTML = '';
+  for (let i = 1; i <= 4; i++) {
+    const key   = String(i);
+    const level = LEVELS[key];
+    const prog  = PROGRESS[key];
+    const isUnlocked = level.unlockRequires === null || PROGRESS[level.unlockRequires].beaten;
+    const isBoss     = key === '4';
+
+    const node = document.createElement('div');
+    node.className = 'level-node' + (isUnlocked ? '' : ' locked');
+
+    // Left: level number + name + constraint
+    const leftDiv = document.createElement('div');
+    leftDiv.className = 'level-node-left';
+
+    const numEl = document.createElement('div');
+    numEl.className = 'level-number';
+    numEl.textContent = `Level ${i}${isBoss ? '  \u2620' : ''}`;
+    leftDiv.appendChild(numEl);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'level-name';
+    nameEl.textContent = level.name;
+    leftDiv.appendChild(nameEl);
+
+    if (level.constraint) {
+      const cEl = document.createElement('div');
+      cEl.className = 'level-constraint';
+      cEl.textContent = level.constraint;
+      leftDiv.appendChild(cEl);
+    }
+
+    node.appendChild(leftDiv);
+
+    // Right: lock / checkmark / play button
+    const rightDiv = document.createElement('div');
+    rightDiv.className = 'level-action';
+
+    if (!isUnlocked) {
+      rightDiv.textContent = '\uD83D\uDD12';
+    } else if (prog.beaten) {
+      const check = document.createElement('span');
+      check.className = 'level-checkmark';
+      check.textContent = '\u2713';
+      rightDiv.appendChild(check);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'play-btn';
+      btn.textContent = '\u25B6 Play';
+      btn.addEventListener('click', () => { loadLevel(key); showScreen('game'); });
+      rightDiv.appendChild(btn);
+    }
+
+    node.appendChild(rightDiv);
+    list.appendChild(node);
+  }
+}
+
+function showScreen(name) {
+  ['screen-worldmap', 'screen-game', 'screen-gameover'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('screen-' + name).style.display = 'flex';
+  if (name === 'worldmap') renderWorldMap();
+}
+
+// ─── INIT ───
 updateTowerBtnStyles();
+showScreen('worldmap');
 gameLoop();

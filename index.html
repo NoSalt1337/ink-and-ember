@@ -3,23 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ink & Ember</title>
+    <title>Ink &amp; Ember</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div id="game-container">
-      <canvas id="gameCanvas"></canvas>
-      <div id="tower-btns">
-        <button id="btn_select" class="tower-btn">&#9654; Select</button>
-        <button id="btn_archer" class="tower-btn">Archer 50g</button>
-        <button id="btn_cannon" class="tower-btn">Cannon 75g</button>
-        <button id="btn_frost"  class="tower-btn">Frost 60g</button>
-        <button id="btn_mage"   class="tower-btn">Mage 90g</button>
+
+    <!-- ── World Map Screen ── -->
+    <div id="screen-worldmap">
+      <div class="worldmap-inner">
+        <h1 class="worldmap-title">Ink &amp; Ember</h1>
+        <h2 class="worldmap-subtitle">The Verdant Pass</h2>
+        <div id="level-list" class="level-list"></div>
       </div>
-      <button id="sendWaveBtn">Send Wave</button>
-      <button id="testCannonBtn">Test Cannon</button> <!-- DEBUG - remove before release -->
-      <button id="rerollBtn" style="display:none;">Reroll (30g)</button>
     </div>
+
+    <!-- ── Game Screen ── -->
+    <div id="screen-game">
+      <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="tower-btns">
+          <button id="btn_select" class="tower-btn">&#9654; Select</button>
+          <button id="btn_archer" class="tower-btn">Archer 50g</button>
+          <button id="btn_cannon" class="tower-btn">Cannon 75g</button>
+          <button id="btn_frost"  class="tower-btn">Frost 60g</button>
+          <button id="btn_mage"   class="tower-btn">Mage 90g</button>
+        </div>
+        <div id="wave-controls">
+          <button id="sendWaveBtn">Send Wave</button>
+          <button id="backToMapBtn">&#8617; Map</button>
+        </div>
+        <button id="testCannonBtn">Test Cannon</button> <!-- DEBUG - remove before release -->
+        <button id="rerollBtn" style="display:none;">Reroll (30g)</button>
+      </div>
+    </div>
+
+    <!-- ── Game Over Screen (placeholder) ── -->
+    <div id="screen-gameover"></div>
+
     <script src="game.js"></script>
   </body>
 </html>
