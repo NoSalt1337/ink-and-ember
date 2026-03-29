@@ -530,6 +530,8 @@ function showSynergy(msg) {
 let cardOfferActive  = false;
 let offeredCards     = [];
 let pendingCardTower = null;
+let rerollCount      = 0;  // rerolls within the current offer session
+let rerollFlashTimer = 0;  // brief amber flash on button after each reroll
 let selectedCard     = null;
 let cardFullTimer    = 0;
 
@@ -578,8 +580,9 @@ function drawCard(card, x, y, w, h, highlighted) {
   ctx.textAlign = 'left';
 }
 
-function offerCards() {
+function offerCards(isReroll = false) {
   selectedTower = null; // dismiss any open info panel
+  if (!isReroll) rerollCount = 0;
 
   // Build the eligible pool — only cards the player has unlocked
   const available = CARD_POOL.filter(c => unlockedCards.includes(c.id));
@@ -645,6 +648,17 @@ function drawCardOffer() {
       CARD_PANELS.push({ x: cx, y: startY, w: cardW, h: cardH, card });
       drawCard(card, cx, startY, cardW, cardH, false);
     });
+
+    // "Rerolls getting expensive!" warning after 3+ rerolls
+    if (rerollCount >= 3) {
+      ctx.fillStyle = COLORS.crimson;
+      ctx.font      = '11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Rerolls getting expensive!', canvas.width / 2, startY + cardH + 36);
+      ctx.textAlign = 'left';
+    }
+
+    updateRerollBtn();
 
   } else if (selectedCard !== null) {
     // State 2: card chosen, awaiting tower tap — floating banner only
@@ -726,6 +740,7 @@ function spawnWave() {
     return;
   }
   waveRewardGiven = false;
+  rerollCount     = 0;
   waveNum++;
   spawning   = true;
   spawnQueue = [];
@@ -1372,11 +1387,31 @@ function updateTowerBtnStyles() {
 }
 
 document.getElementById('rerollBtn').addEventListener('click', () => {
-  if (gold >= 50) {
-    gold -= 50;
-    offerCards();
+  const cost = 50 + rerollCount * 25;
+  if (gold >= cost) {
+    gold           -= cost;
+    rerollCount++;
+    rerollFlashTimer = 40;
+    offerCards(true);
   }
 });
+
+function updateRerollBtn() {
+  const btn = document.getElementById('rerollBtn');
+  if (!btn || btn.style.display === 'none') return;
+  const cost      = 50 + rerollCount * 25;
+  const canAfford = gold >= cost;
+  btn.textContent       = `Reroll \u2014 ${cost}g`;
+  btn.disabled          = !canAfford;
+  btn.style.opacity     = canAfford ? '1' : '0.45';
+  if (rerollFlashTimer > 0) {
+    btn.style.borderColor = '#D4A847';
+    btn.style.color       = '#D4A847';
+  } else {
+    btn.style.borderColor = canAfford ? '#D4A847' : '#444';
+    btn.style.color       = canAfford ? '#E8DDD0' : '#555';
+  }
+}
 
 document.getElementById('backToMapBtn').addEventListener('click', () => {
   backConfirmActive = true;
@@ -2179,6 +2214,7 @@ function gameLoop() {
   if (cardFullTimer > 0)       cardFullTimer--;
   if (notEnoughGoldTimer > 0)  notEnoughGoldTimer--;
   if (clearWaveTimer > 0)      clearWaveTimer--;
+  if (rerollFlashTimer > 0)    rerollFlashTimer--;
   updateSendWaveBtn();
 
   // Boss defeated countdown — trigger bonus card offer when it expires
@@ -2373,6 +2409,8 @@ function loadLevel(levelKey) {
   bossEscaped            = false;
   bossEscapedName        = '';
   clearWaveTimer         = 0;
+  rerollCount            = 0;
+  rerollFlashTimer       = 0;
   bossAnnounceTimer      = 0;
   bossAnnounceData       = null;
   bossDefeatedTimer      = 0;
