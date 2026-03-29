@@ -182,6 +182,11 @@ let cardsUnlockedThisRun  = [];
 let runLives              = 20;  // preserved when backing to map mid-run
 const WORLD_COMPLETE_BTN  = { w: 180, h: 36 };
 
+// ─── BOSS ESCAPE STATE ───
+let bossEscaped     = false;
+let bossEscapedName = '';
+let frameCount      = 0;
+
 // ─── META PROGRESSION ───
 const SAVE_KEY = 'inkember_save';
 let unlockedCards = ['dmg_boost', 'range_boost', 'speed_boost'];
@@ -865,6 +870,20 @@ function updateEnemies() {
 
     const next = PATH[enemy.pathIdx + 1];
     if (!next) {
+      if (enemy.isBoss) {
+        // Boss reaching the exit is an instant loss
+        bossEscaped     = true;
+        bossEscapedName = enemy.name || 'The Boss';
+        if (currentWorldRun) {
+          lostDuringRun   = true;
+          lostAtLevel     = currentLevel;
+          currentWorldRun = false;
+        }
+        ENEMIES.length = 0;
+        BULLETS.length = 0;
+        gameOver = true;
+        break;
+      }
       const fortressCount = TOWERS.filter(t => t.fortress).length;
       const livesLost = Math.max(0, 1 - fortressCount);
       if (livesLost > 0) perfectRun = false;
@@ -1268,11 +1287,13 @@ function handleCanvasInput(pixelX, pixelY) {
       pixelX >= GAME_OVER_BTN.x && pixelX <= GAME_OVER_BTN.x + GAME_OVER_BTN.w &&
       pixelY >= GAME_OVER_BTN.y && pixelY <= GAME_OVER_BTN.y + GAME_OVER_BTN.h
     ) {
-      if (lostDuringRun) {
-        lostDuringRun = false;
-        lostAtLevel   = null;
-        worldRunLevel = 1;
-        runLives      = 20;
+      if (lostDuringRun || bossEscaped) {
+        lostDuringRun   = false;
+        bossEscaped     = false;
+        bossEscapedName = '';
+        lostAtLevel     = null;
+        worldRunLevel   = 1;
+        runLives        = 20;
         showScreen('worldmap');
       } else {
         restartGame();
@@ -1983,17 +2004,37 @@ function drawGameOver() {
   const cx     = canvas.width / 2;
   const cy     = canvas.height / 2;
   const panelW = 340;
-  const panelH = lostDuringRun ? 200 : 160;
+  const isRun  = lostDuringRun || bossEscaped;
+  const panelH = bossEscaped ? 230 : (lostDuringRun ? 200 : 160);
 
   ctx.fillStyle = 'rgba(14, 11, 8, 0.88)';
   ctx.fillRect(cx - panelW / 2, cy - panelH / 2, panelW, panelH);
-  ctx.strokeStyle = lostDuringRun ? '#8B1A1A' : COLORS.amber;
+  ctx.strokeStyle = isRun ? '#8B1A1A' : COLORS.amber;
   ctx.lineWidth   = 1.5;
   ctx.strokeRect(cx - panelW / 2 + 1, cy - panelH / 2 + 1, panelW - 2, panelH - 2);
 
   ctx.textAlign = 'center';
 
-  if (lostDuringRun) {
+  if (bossEscaped) {
+    ctx.fillStyle = '#8B1A1A';
+    ctx.font      = 'bold 26px monospace';
+    ctx.fillText('The Boss Escaped!', cx, cy - 84);
+
+    ctx.fillStyle = COLORS.amber;
+    ctx.font      = '13px monospace';
+    ctx.fillText(`${bossEscapedName} reached the end`, cx, cy - 56);
+
+    ctx.fillStyle = COLORS.ash;
+    ctx.font      = '12px monospace';
+    if (lostDuringRun) {
+      ctx.fillText(`Level ${lostAtLevel} of The Verdant Pass`, cx, cy - 30);
+      ctx.fillText(`Score: ${runScore}`, cx, cy - 10);
+      ctx.fillText(`Waves survived: ${waveNum}`, cx, cy + 10);
+    } else {
+      ctx.fillText(`Score: ${score}`, cx, cy - 30);
+      ctx.fillText(`Waves survived: ${waveNum}`, cx, cy - 10);
+    }
+  } else if (lostDuringRun) {
     ctx.fillStyle = '#8B1A1A';
     ctx.font      = 'bold 32px monospace';
     ctx.fillText('Defeated!', cx, cy - 68);
@@ -2017,15 +2058,15 @@ function drawGameOver() {
     ctx.fillText(`Wave reached: ${waveNum}`, cx, cy + 12);
   }
 
-  const btnLabel = lostDuringRun ? 'Try Again' : 'Play Again';
+  const btnLabel = isRun ? 'Try Again' : 'Play Again';
   const btnX = cx - GAME_OVER_BTN.w / 2;
-  const btnY = lostDuringRun ? cy + 34 : cy + 36;
+  const btnY = bossEscaped ? cy + 48 : (lostDuringRun ? cy + 34 : cy + 36);
   ctx.fillStyle = '#1C1410';
   ctx.fillRect(btnX, btnY, GAME_OVER_BTN.w, GAME_OVER_BTN.h);
-  ctx.strokeStyle = lostDuringRun ? '#8B1A1A' : COLORS.amber;
+  ctx.strokeStyle = isRun ? '#8B1A1A' : COLORS.amber;
   ctx.lineWidth   = 2;
   ctx.strokeRect(btnX + 1, btnY + 1, GAME_OVER_BTN.w - 2, GAME_OVER_BTN.h - 2);
-  ctx.fillStyle = lostDuringRun ? '#E8DDD0' : COLORS.ash;
+  ctx.fillStyle = isRun ? '#E8DDD0' : COLORS.ash;
   ctx.font      = '14px monospace';
   ctx.fillText(btnLabel, cx, btnY + 23);
 
@@ -2047,6 +2088,7 @@ function draw() {
   if (bossAnnounceTimer > 0) drawBossAnnounce();
   if (cardOfferActive || selectedCard !== null) drawCardOffer();
   if (selectedTower && !cardOfferActive && selectedCard === null) drawTowerInfoPanel(selectedTower);
+  if (!gameOver)            drawBossEscapeWarning();
   if (levelVictory)         drawVictory();
   if (backConfirmActive)    drawBackConfirm();
   if (betweenLevelActive)   drawBetweenLevel();
@@ -2057,6 +2099,7 @@ function draw() {
 
 // ─── GAME LOOP ───
 function gameLoop() {
+  frameCount++;
   // Between-level countdown (run mode)
   if (betweenLevelActive) {
     betweenLevelTimer--;
@@ -2287,6 +2330,8 @@ function loadLevel(levelKey) {
   selectedCard      = null;
   cardOfferActive   = false;
   placingMode       = 'select';
+  bossEscaped            = false;
+  bossEscapedName        = '';
   bossAnnounceTimer      = 0;
   bossAnnounceData       = null;
   bossDefeatedTimer      = 0;
@@ -2395,6 +2440,35 @@ function drawWorldComplete() {
   ctx.fillText('Return to Map', cx, btnY + 23);
 
   ctx.textAlign = 'left';
+}
+
+// ─── BOSS ESCAPE WARNING ───
+function drawBossEscapeWarning() {
+  const boss = ENEMIES.find(e => e.isBoss && !e.done);
+  if (!boss) return;
+  const progress = boss.pathIdx / (PATH.length - 1);
+  if (progress < 0.75) return;
+
+  const flash = (frameCount % 20) < 10;
+  if (!flash) return;
+
+  ctx.save();
+
+  // Crimson pulsing border around canvas edge
+  ctx.strokeStyle = '#8B1A1A';
+  ctx.lineWidth   = 6;
+  ctx.strokeRect(3, 3, canvas.width - 6, canvas.height - 6);
+
+  // "Boss is escaping!" text at top of canvas
+  const textY = 26;
+  ctx.fillStyle = 'rgba(14, 11, 8, 0.75)';
+  ctx.fillRect(canvas.width / 2 - 110, 6, 220, 24);
+  ctx.fillStyle = '#8B1A1A';
+  ctx.font      = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Boss is escaping!', canvas.width / 2, textY);
+
+  ctx.restore();
 }
 
 // ─── PRACTICE MODE BANNER ───
