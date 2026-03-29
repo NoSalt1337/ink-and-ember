@@ -526,7 +526,7 @@ function spawnWave() {
 
       if (type === 'swarm') {
         for (let j = 0; j < 4 && i < count; j++, i++) {
-          spawnQueue.push({ enemyType: type, hp: baseHp * def.hpMult, delay: delay + j * 8 });
+          spawnQueue.push({ enemyType: type, hp: baseHp * def.hpMult, delay: j === 0 ? delay : 8 });
         }
         delay += 4 * 8 + 30;
       } else {
