@@ -167,6 +167,21 @@ const VICTORY_BTN      = { w: 160, h: 36 };
 const CONFIRM_YES_BTN  = { w: 80,  h: 32 };
 const CONFIRM_NO_BTN   = { w: 80,  h: 32 };
 
+// ─── WORLD RUN STATE ───
+let currentWorld          = 1;
+let currentWorldRun       = false;  // true while actively running through world levels
+let worldRunLevel         = 1;      // which level (1–4) we're currently on in the run
+let betweenLevelActive    = false;
+let betweenLevelTimer     = 0;
+let worldCompleteActive   = false;
+let practiceMode          = false;
+let lostDuringRun         = false;
+let lostAtLevel           = null;
+let runScore              = 0;      // score accumulated across all levels of the run
+let cardsUnlockedThisRun  = [];
+let runLives              = 20;  // preserved when backing to map mid-run
+const WORLD_COMPLETE_BTN  = { w: 180, h: 36 };
+
 // ─── META PROGRESSION ───
 const SAVE_KEY = 'inkember_save';
 let unlockedCards = ['dmg_boost', 'range_boost', 'speed_boost'];
@@ -562,7 +577,6 @@ function offerCards() {
 
   // Build the eligible pool — only cards the player has unlocked
   const available = CARD_POOL.filter(c => unlockedCards.includes(c.id));
-  console.log('[offerCards] unlockedCards:', unlockedCards.slice());
 
   offeredCards = [];
   const usedIds = new Set();
@@ -1218,7 +1232,7 @@ function handleCanvasInput(pixelX, pixelY) {
         pixelX >= CONFIRM_YES_BTN.x && pixelX <= CONFIRM_YES_BTN.x + CONFIRM_YES_BTN.w &&
         pixelY >= CONFIRM_YES_BTN.y && pixelY <= CONFIRM_YES_BTN.y + CONFIRM_YES_BTN.h) {
       backConfirmActive = false;
-      loadLevel(currentLevel);
+      if (currentWorldRun) runLives = lives;  // preserve lives for when the player continues
       showScreen('worldmap');
     } else if (CONFIRM_NO_BTN.x !== undefined &&
         pixelX >= CONFIRM_NO_BTN.x && pixelX <= CONFIRM_NO_BTN.x + CONFIRM_NO_BTN.w &&
@@ -1238,13 +1252,31 @@ function handleCanvasInput(pixelX, pixelY) {
     return;
   }
 
+  if (worldCompleteActive) {
+    if (WORLD_COMPLETE_BTN.x !== undefined &&
+        pixelX >= WORLD_COMPLETE_BTN.x && pixelX <= WORLD_COMPLETE_BTN.x + WORLD_COMPLETE_BTN.w &&
+        pixelY >= WORLD_COMPLETE_BTN.y && pixelY <= WORLD_COMPLETE_BTN.y + WORLD_COMPLETE_BTN.h) {
+      worldCompleteActive = false;
+      showScreen('worldmap');
+    }
+    return;
+  }
+
   if (gameOver) {
     if (
       GAME_OVER_BTN.x !== undefined &&
       pixelX >= GAME_OVER_BTN.x && pixelX <= GAME_OVER_BTN.x + GAME_OVER_BTN.w &&
       pixelY >= GAME_OVER_BTN.y && pixelY <= GAME_OVER_BTN.y + GAME_OVER_BTN.h
     ) {
-      restartGame();
+      if (lostDuringRun) {
+        lostDuringRun = false;
+        lostAtLevel   = null;
+        worldRunLevel = 1;
+        runLives      = 20;
+        showScreen('worldmap');
+      } else {
+        restartGame();
+      }
     }
     return;
   }
@@ -1950,41 +1982,54 @@ function restartGame() {
 function drawGameOver() {
   const cx     = canvas.width / 2;
   const cy     = canvas.height / 2;
-  const panelW = 320;
-  const panelH = 160;
+  const panelW = 340;
+  const panelH = lostDuringRun ? 200 : 160;
 
   ctx.fillStyle = 'rgba(14, 11, 8, 0.88)';
   ctx.fillRect(cx - panelW / 2, cy - panelH / 2, panelW, panelH);
-  ctx.strokeStyle = COLORS.amber;
+  ctx.strokeStyle = lostDuringRun ? '#8B1A1A' : COLORS.amber;
   ctx.lineWidth   = 1.5;
   ctx.strokeRect(cx - panelW / 2 + 1, cy - panelH / 2 + 1, panelW - 2, panelH - 2);
 
   ctx.textAlign = 'center';
 
-  ctx.fillStyle = COLORS.gold;
-  ctx.font      = 'bold 32px monospace';
-  ctx.fillText('Game Over', cx, cy - 40);
+  if (lostDuringRun) {
+    ctx.fillStyle = '#8B1A1A';
+    ctx.font      = 'bold 32px monospace';
+    ctx.fillText('Defeated!', cx, cy - 68);
 
-  ctx.fillStyle = COLORS.ash;
-  ctx.font      = '14px monospace';
-  ctx.fillText(`Score: ${score}`, cx, cy - 10);
-  ctx.fillText(`Wave reached: ${waveNum}`, cx, cy + 12);
+    ctx.fillStyle = COLORS.amber;
+    ctx.font      = '13px monospace';
+    ctx.fillText(`You fell at Level ${lostAtLevel} of The Verdant Pass`, cx, cy - 40);
 
-  // Play Again button
+    ctx.fillStyle = COLORS.ash;
+    ctx.font      = '12px monospace';
+    ctx.fillText(`Score: ${runScore}`, cx, cy - 14);
+    ctx.fillText(`Wave reached: ${waveNum}`, cx, cy + 6);
+  } else {
+    ctx.fillStyle = COLORS.gold;
+    ctx.font      = 'bold 32px monospace';
+    ctx.fillText('Game Over', cx, cy - 40);
+
+    ctx.fillStyle = COLORS.ash;
+    ctx.font      = '14px monospace';
+    ctx.fillText(`Score: ${score}`, cx, cy - 10);
+    ctx.fillText(`Wave reached: ${waveNum}`, cx, cy + 12);
+  }
+
+  const btnLabel = lostDuringRun ? 'Try Again' : 'Play Again';
   const btnX = cx - GAME_OVER_BTN.w / 2;
-  const btnY = cy + 36;
+  const btnY = lostDuringRun ? cy + 34 : cy + 36;
   ctx.fillStyle = '#1C1410';
   ctx.fillRect(btnX, btnY, GAME_OVER_BTN.w, GAME_OVER_BTN.h);
-  ctx.strokeStyle = COLORS.amber;
+  ctx.strokeStyle = lostDuringRun ? '#8B1A1A' : COLORS.amber;
   ctx.lineWidth   = 2;
   ctx.strokeRect(btnX + 1, btnY + 1, GAME_OVER_BTN.w - 2, GAME_OVER_BTN.h - 2);
-  ctx.fillStyle = COLORS.ash;
+  ctx.fillStyle = lostDuringRun ? '#E8DDD0' : COLORS.ash;
   ctx.font      = '14px monospace';
-  ctx.fillText('Play Again', cx, btnY + 23);
+  ctx.fillText(btnLabel, cx, btnY + 23);
 
   ctx.textAlign = 'left';
-
-  // Store button bounds for hit testing (y is relative to canvas center)
   GAME_OVER_BTN.x = btnX;
   GAME_OVER_BTN.y = btnY;
 }
@@ -2002,14 +2047,45 @@ function draw() {
   if (bossAnnounceTimer > 0) drawBossAnnounce();
   if (cardOfferActive || selectedCard !== null) drawCardOffer();
   if (selectedTower && !cardOfferActive && selectedCard === null) drawTowerInfoPanel(selectedTower);
-  if (levelVictory)    drawVictory();
-  if (backConfirmActive) drawBackConfirm();
+  if (levelVictory)         drawVictory();
+  if (backConfirmActive)    drawBackConfirm();
+  if (betweenLevelActive)   drawBetweenLevel();
+  if (worldCompleteActive)  drawWorldComplete();
+  if (practiceMode)         drawPracticeModeBanner();
   drawUnlockNotification();
 }
 
 // ─── GAME LOOP ───
 function gameLoop() {
-  if (lives <= 0 && !gameOver && !levelVictory) gameOver = true;
+  // Between-level countdown (run mode)
+  if (betweenLevelActive) {
+    betweenLevelTimer--;
+    if (betweenLevelTimer <= 0) {
+      const savedLives = lives;
+      betweenLevelActive = false;
+      loadLevel(String(worldRunLevel));
+      lives = savedLives;
+    }
+    draw();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  // World complete screen
+  if (worldCompleteActive) {
+    draw();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  if (lives <= 0 && !gameOver && !levelVictory) {
+    if (currentWorldRun) {
+      lostDuringRun   = true;
+      lostAtLevel     = currentLevel;
+      currentWorldRun = false;
+    }
+    gameOver = true;
+  }
 
   if (gameOver) {
     draw();
@@ -2034,7 +2110,8 @@ function gameLoop() {
     }
   }
 
-  if (!cardOfferActive && selectedCard === null && !levelVictory && !backConfirmActive) {
+  if (!cardOfferActive && selectedCard === null && !levelVictory && !backConfirmActive
+      && !betweenLevelActive && !worldCompleteActive) {
     updateSpawnQueue();
     updateEnemies();
     updateTowers();
@@ -2048,7 +2125,24 @@ function gameLoop() {
       checkWaveMilestones();
       PROGRESS[currentLevel].beaten = true;
       checkLevelMilestones();
-      levelVictory = true;
+
+      if (currentWorldRun) {
+        runScore += score;
+        const levelNum = parseInt(currentLevel);
+        if (levelNum >= 4) {
+          // All 4 levels complete — world beaten
+          worldCompleteActive = true;
+          currentWorldRun     = false;
+          saveGame();
+        } else {
+          // Advance to next level via countdown screen
+          worldRunLevel      = levelNum + 1;
+          betweenLevelActive = true;
+          betweenLevelTimer  = 180;
+        }
+      } else {
+        levelVictory = true; // practice / normal single-level play
+      }
     }
     // Trigger card offer when wave is cleared (but level not yet complete)
     else if (waveNum > 0 && !spawning && spawnQueue.length === 0 && ENEMIES.length === 0
@@ -2176,7 +2270,8 @@ function loadLevel(levelKey) {
   levelBossFrequency   = currentLevel === '4' ? 2   : 5;
   currentDifficulty    = level.difficulty;
 
-  perfectRun = true;
+  perfectRun   = true;
+  practiceMode = false;
   towerTypesUsed.clear();
   lives             = 20;
   gold              = level.startingGold;
@@ -2209,11 +2304,117 @@ function loadLevel(levelKey) {
   updateTowerBtnStyles();
 }
 
+// ─── BETWEEN-LEVEL SCREEN (run mode) ───
+function drawBetweenLevel() {
+  ctx.fillStyle = 'rgba(0,0,0,0.87)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const cx          = canvas.width / 2;
+  const cy          = canvas.height / 2;
+  const nextLevel   = LEVELS[String(worldRunLevel)];
+  const secondsLeft = Math.max(1, Math.ceil(betweenLevelTimer / 60));
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = 'rgba(212,168,71,0.75)';
+  ctx.font      = 'bold 30px monospace';
+  ctx.fillText('Level Complete!', cx, cy - 88);
+
+  ctx.fillStyle = COLORS.amber;
+  ctx.font      = 'bold 15px monospace';
+  ctx.fillText(`Next: ${nextLevel.name}`, cx, cy - 52);
+
+  if (nextLevel.constraint) {
+    ctx.fillStyle = '#777';
+    ctx.font      = '11px monospace';
+    ctx.fillText(nextLevel.constraint, cx, cy - 32);
+  }
+
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - 130, cy - 16);
+  ctx.lineTo(cx + 130, cy - 16);
+  ctx.stroke();
+
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = '12px monospace';
+  ctx.fillText(`Lives: ${lives}   Score: ${runScore}`, cx, cy + 6);
+
+  if (cardsUnlockedThisRun.length > 0) {
+    ctx.fillStyle = COLORS.gold;
+    ctx.fillText(`Cards unlocked this run: ${cardsUnlockedThisRun.length}`, cx, cy + 26);
+  }
+
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = '13px monospace';
+  ctx.fillText(`Next level in ${secondsLeft}...`, cx, cy + 58);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── WORLD COMPLETE SCREEN ───
+function drawWorldComplete() {
+  ctx.fillStyle = 'rgba(0,0,0,0.90)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = 'rgba(212,168,71,0.88)';
+  ctx.font      = 'bold 34px monospace';
+  ctx.fillText('World Complete!', cx, cy - 100);
+
+  ctx.fillStyle = COLORS.amber;
+  ctx.font      = '14px monospace';
+  ctx.fillText('The Verdant Pass has been conquered', cx, cy - 68);
+
+  ctx.fillStyle = COLORS.ash;
+  ctx.font      = '12px monospace';
+  ctx.fillText(`Score: ${runScore}   Lives remaining: ${lives}`, cx, cy - 36);
+
+  if (cardsUnlockedThisRun.length > 0) {
+    ctx.fillStyle = COLORS.gold;
+    ctx.fillText(`${cardsUnlockedThisRun.length} new card${cardsUnlockedThisRun.length > 1 ? 's' : ''} unlocked`, cx, cy - 14);
+  }
+
+  // Return to Map button
+  const btnX = cx - WORLD_COMPLETE_BTN.w / 2;
+  const btnY = cy + 16;
+  WORLD_COMPLETE_BTN.x = btnX;
+  WORLD_COMPLETE_BTN.y = btnY;
+  ctx.fillStyle   = '#1C1814';
+  ctx.fillRect(btnX, btnY, WORLD_COMPLETE_BTN.w, WORLD_COMPLETE_BTN.h);
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(btnX, btnY, WORLD_COMPLETE_BTN.w, WORLD_COMPLETE_BTN.h);
+  ctx.fillStyle = COLORS.gold;
+  ctx.font      = 'bold 14px monospace';
+  ctx.fillText('Return to Map', cx, btnY + 23);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── PRACTICE MODE BANNER ───
+function drawPracticeModeBanner() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(14,11,8,0.72)';
+  ctx.fillRect(0, 0, 118, 20);
+  ctx.fillStyle = COLORS.amber;
+  ctx.font      = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('PRACTICE MODE', 6, 14);
+  ctx.restore();
+}
+
 // ─── MILESTONE CHECKS ───
 function unlockCard(cardId) {
   if (unlockedCards.includes(cardId)) return;
   unlockedCards.push(cardId);
   unlockNotificationQueue.push(cardId);
+  if (currentWorldRun) cardsUnlockedThisRun.push(cardId);
   saveGame();
 }
 
@@ -2383,30 +2584,72 @@ function renderWorldMap() {
 
     node.appendChild(leftDiv);
 
+    // Run-active highlight on current run level
+    if (currentWorldRun && parseInt(key) === worldRunLevel) {
+      node.classList.add('run-active');
+    }
+
     // Right: lock / checkmark / play button
     const rightDiv = document.createElement('div');
     rightDiv.className = 'level-action';
 
     if (!isUnlocked) {
       rightDiv.textContent = '\uD83D\uDD12';
+    } else if (currentWorldRun && parseInt(key) === worldRunLevel) {
+      // Active run paused here — offer to continue
+      const btn = document.createElement('button');
+      btn.className = 'play-btn run-continue-btn';
+      btn.textContent = '\u25B6 Continue';
+      btn.addEventListener('click', () => {
+        const savedLives = runLives;
+        loadLevel(key);
+        lives = savedLives;
+        showScreen('game');
+      });
+      rightDiv.appendChild(btn);
+    } else if (i === 1) {
+      // Level 1 always starts (or restarts) a world run
+      if (prog.beaten) {
+        const check = document.createElement('span');
+        check.className = 'level-checkmark';
+        check.textContent = '\u2713';
+        rightDiv.appendChild(check);
+      }
+      const btn = document.createElement('button');
+      btn.className = 'play-btn';
+      btn.textContent = prog.beaten ? '\u21BA New Run' : '\u25B6 Play';
+      btn.addEventListener('click', () => {
+        currentWorldRun          = true;
+        worldRunLevel            = 1;
+        cardsUnlockedThisRun     = [];
+        runScore                 = 0;
+        runLives                 = 20;
+        loadLevel('1');
+        showScreen('game');
+      });
+      rightDiv.appendChild(btn);
     } else if (prog.beaten) {
+      // Levels 2-4 beaten — free practice replay
       const check = document.createElement('span');
       check.className = 'level-checkmark';
       check.textContent = '\u2713';
       rightDiv.appendChild(check);
-      // Also add replay button
       const replayBtn = document.createElement('button');
       replayBtn.className = 'play-btn';
-      replayBtn.textContent = '\u21BA';
-      replayBtn.title = 'Play again';
-      replayBtn.addEventListener('click', () => { loadLevel(key); showScreen('game'); });
+      replayBtn.textContent = '\u21BA Replay';
+      replayBtn.title = 'Replay for practice (no run progression)';
+      replayBtn.addEventListener('click', () => {
+        loadLevel(key);
+        practiceMode = true;
+        showScreen('game');
+      });
       rightDiv.appendChild(replayBtn);
     } else {
-      const btn = document.createElement('button');
-      btn.className = 'play-btn';
-      btn.textContent = '\u25B6 Play';
-      btn.addEventListener('click', () => { loadLevel(key); showScreen('game'); });
-      rightDiv.appendChild(btn);
+      // Levels 2-4 unbeaten outside a run — show hint
+      const hint = document.createElement('span');
+      hint.className = 'level-run-hint';
+      hint.textContent = 'Start from Level 1';
+      rightDiv.appendChild(hint);
     }
 
     node.appendChild(rightDiv);
