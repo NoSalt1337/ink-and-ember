@@ -726,8 +726,7 @@ function spawnWave() {
         for (let j = 0; j < 4 && i < count; j++, i++) {
           spawnQueue.push({ enemyType: type, hp: baseHp * def.hpMult, delay: j === 0 ? delay : 8 });
         }
-        // Group spans 4 enemy slots; subtract the 24 frames already used by internal spacing
-        delay += Math.max(8, 4 * gap - 24);
+        delay += gap;
       } else {
         spawnQueue.push({ enemyType: type, hp: baseHp * def.hpMult, delay });
         delay += gap;
@@ -1063,16 +1062,13 @@ function hitEnemy(bullet, enemy) {
       );
       CHAIN_LINES.push({ x1: enemy.x, y1: enemy.y, x2: nearest.x, y2: nearest.y, life: 10 });
       BULLETS.push({
+        ...bullet,
         x:           enemy.x,
         y:           enemy.y,
         tx:          nearest,
-        speed:       bullet.speed,
         dmg:         bullet.dmg * 0.6,
-        color:       bullet.color,
         poison:      bullet.plagueChain ? true : bullet.poison,
-        slow:        bullet.slow,
         bounces:     bullet.bounces - 1,
-        plagueChain: bullet.plagueChain,
         hitSet:      bullet.hitSet,
         done:        false,
       });
